@@ -1,0 +1,88 @@
+# Materials, storage, lots, suppliers and spare parts.
+#
+# Feed consumption is metered from the TEP feed-flow measurements. Conversions follow TEFUNC:
+#   XMEAS(1),(4) [kscmh] = FTM*0.359/35.3145  (FTM in lbmol/h);  kg = lb * 0.454
+#   XMEAS(2),(3) are already kg/h.
+# Mole fractions are the stream compositions assigned in TEINIT (XST(:,1..4)).
+# Coupled lot attributes reach TEP as a deviation from the material's nominal attribute
+# (configs/coupling.yaml CR-FEED-*-LOT: boundary = TEINIT value + deviation), so a nominal lot
+# leaves TEP at its TEINIT values and a healthy plant reproduces native TEP behaviour.
+
+posting_interval_s: 900          # MATERIAL_CONSUMED events are posted every 15 min
+supply_availability:
+  heel_fraction: 0.02            # unpumpable heel
+  ramp_fraction: 0.01            # availability ramps 1->0 over this band above the heel
+low_level_fraction: 0.20
+
+materials:
+  MAT-A:
+    name: Reactant A (gas, stream 1)
+    category: raw_material
+    unit: kg
+    tep: {stream: 1, measurement: XMEAS(1), conversion: kscmh, mole_fractions: {A: 0.9999, B: 0.0001}}
+    attributes: {feed_impurity: 0.0001}
+    attribute_units: {feed_impurity: mol fraction B}
+    specification: {feed_impurity: {max: 0.0010}}
+  MAT-D:
+    name: Reactant D (liquid, stream 2)
+    category: raw_material
+    unit: kg
+    tep: {stream: 2, measurement: XMEAS(2), conversion: kg_h}
+    attributes: {feed_impurity: 0.0001}
+    attribute_units: {feed_impurity: mol fraction B}
+    specification: {feed_impurity: {max: 0.0010}}
+  MAT-E:
+    name: Reactant E (liquid, stream 3)
+    category: raw_material
+    unit: kg
+    tep: {stream: 3, measurement: XMEAS(3), conversion: kg_h}
+    attributes: {feed_impurity: 0.0001}
+    attribute_units: {feed_impurity: mol fraction F}
+    specification: {feed_impurity: {max: 0.0010}}
+  MAT-AC:
+    name: Reactant A/C mixture (gas, stream 4)
+    category: raw_material
+    unit: kg
+    tep: {stream: 4, measurement: XMEAS(4), conversion: kscmh, mole_fractions: {A: 0.485, B: 0.005, C: 0.510}}
+    attributes: {feed_a_fraction: 0.485, feed_b_fraction: 0.005}
+    attribute_units: {feed_a_fraction: mol fraction A, feed_b_fraction: mol fraction B}
+    specification: {feed_a_fraction: {min: 0.465, max: 0.505}, feed_b_fraction: {max: 0.010}}
+  MAT-GH:
+    name: Product G/H mixture (Mode 1, 50/50 by mass)
+    category: finished_good
+    unit: kg
+
+storage:
+  SU-SPH-103: {material: MAT-A,  capacity_kg: 1500,   initial_kg: 900}
+  SU-TK-101:  {material: MAT-D,  capacity_kg: 60000,  initial_kg: 30000}
+  SU-TK-102:  {material: MAT-E,  capacity_kg: 70000,  initial_kg: 42000}
+  SU-SPH-104: {material: MAT-AC, capacity_kg: 110000, initial_kg: 60000}
+
+suppliers:
+  SUP-GASCO:   {name: GasCo Industrial Gases, materials: [MAT-A, MAT-AC]}
+  SUP-CHEMSUP: {name: ChemSupply Ltd, materials: [MAT-D, MAT-E]}
+
+replenishment:          # reorder-point policy per storage unit
+  SU-SPH-103: {supplier: SUP-GASCO,   reorder_point_kg: 450,   order_qty_kg: 600,   lead_time_h: 3.0, lead_time_jitter_h: 0.5}
+  SU-TK-101:  {supplier: SUP-CHEMSUP, reorder_point_kg: 24000, order_qty_kg: 24000, lead_time_h: 1.0, lead_time_jitter_h: 0.25}
+  SU-TK-102:  {supplier: SUP-CHEMSUP, reorder_point_kg: 28000, order_qty_kg: 26000, lead_time_h: 4.0, lead_time_jitter_h: 1.0}
+  SU-SPH-104: {supplier: SUP-GASCO,   reorder_point_kg: 40000, order_qty_kg: 40000, lead_time_h: 3.0, lead_time_jitter_h: 0.5}
+
+initial_lots:
+  - {id: LOT-A-2601,  material: MAT-A,  storage: SU-SPH-103, quantity_kg: 900,   supplier: SUP-GASCO}
+  - {id: LOT-D-2611,  material: MAT-D,  storage: SU-TK-101,  quantity_kg: 12000, supplier: SUP-CHEMSUP}
+  - {id: LOT-D-2612,  material: MAT-D,  storage: SU-TK-101,  quantity_kg: 18000, supplier: SUP-CHEMSUP}
+  - {id: LOT-E-2621,  material: MAT-E,  storage: SU-TK-102,  quantity_kg: 42000, supplier: SUP-CHEMSUP}
+  - {id: LOT-AC-2631, material: MAT-AC, storage: SU-SPH-104, quantity_kg: 25000, supplier: SUP-GASCO}
+  - {id: LOT-AC-2632, material: MAT-AC, storage: SU-SPH-104, quantity_kg: 35000, supplier: SUP-GASCO}
+
+spare_parts:
+  SP-IMP-101:    {name: Impeller, CW pump P-101,        location: SU-WH-MRO, on_hand: 1, reorder_point: 0, order_qty: 2, lead_time_h: 72}
+  SP-IMP-201:    {name: Impeller, CW pump P-201,        location: SU-WH-MRO, on_hand: 1, reorder_point: 0, order_qty: 2, lead_time_h: 72}
+  SP-SEAL-101:   {name: Mechanical seal kit, CW pumps,  location: SU-WH-MRO, on_hand: 4, reorder_point: 1, order_qty: 4, lead_time_h: 48}
+  SP-FILL-101:   {name: Cooling tower fill pack,        location: SU-WH-MRO, on_hand: 2, reorder_point: 0, order_qty: 2, lead_time_h: 120}
+  SP-BURNER-301: {name: Burner nozzle set B-301,        location: SU-WH-MRO, on_hand: 1, reorder_point: 0, order_qty: 1, lead_time_h: 96}
+  SP-MCC-BKT:    {name: MCC starter bucket,             location: SU-WH-MRO, on_hand: 2, reorder_point: 1, order_qty: 2, lead_time_h: 48}
+  SP-SEAL-K101:  {name: Dry gas seal K-101,             location: SU-WH-MRO, on_hand: 1, reorder_point: 0, order_qty: 1, lead_time_h: 240}
+  SP-BRG-K101:   {name: Bearing set K-101,              location: SU-WH-MRO, on_hand: 2, reorder_point: 1, order_qty: 2, lead_time_h: 96}
+  SP-BRG-M101:   {name: Agitator gearbox bearing,       location: SU-WH-MRO, on_hand: 1, reorder_point: 0, order_qty: 1, lead_time_h: 96}

@@ -1,0 +1,85 @@
+# Mapping of TEP variables onto ISA-95 equipment elements and properties.
+#   TEP variable -> property -> equipment entity -> (area derived from hierarchy) -> unit (from teprob.f)
+# Names/units/sampling come from simulator/tep/catalog.py (transcribed from teprob.f).
+# 'tag' is the plant instrument tag used in the UI.
+
+xmeas:
+  1:  {equipment: EM-FEED-A,        property: flow,                      tag: FI-01}
+  2:  {equipment: EM-FEED-D,        property: flow,                      tag: FI-02}
+  3:  {equipment: EM-FEED-E,        property: flow,                      tag: FI-03}
+  4:  {equipment: EM-FEED-AC,       property: flow,                      tag: FI-04}
+  5:  {equipment: EM-COMPRESSOR,    property: recycle_flow,              tag: FI-05}
+  6:  {equipment: EM-REACTOR,       property: feed_rate,                 tag: FI-06}
+  7:  {equipment: EM-REACTOR,       property: pressure,                  tag: PI-07}
+  8:  {equipment: EM-REACTOR,       property: level,                     tag: LI-08}
+  9:  {equipment: EM-REACTOR,       property: temperature,               tag: TI-09}
+  10: {equipment: EM-PURGE,         property: flow,                      tag: FI-10}
+  11: {equipment: EM-SEPARATOR,     property: temperature,               tag: TI-11}
+  12: {equipment: EM-SEPARATOR,     property: level,                     tag: LI-12}
+  13: {equipment: EM-SEPARATOR,     property: pressure,                  tag: PI-13}
+  14: {equipment: EM-SEPARATOR,     property: underflow,                 tag: FI-14}
+  15: {equipment: EM-STRIPPER,      property: level,                     tag: LI-15}
+  16: {equipment: EM-STRIPPER,      property: pressure,                  tag: PI-16}
+  17: {equipment: EM-STRIPPER,      property: product_flow,              tag: FI-17}
+  18: {equipment: EM-STRIPPER,      property: temperature,               tag: TI-18}
+  19: {equipment: EM-STRIPPER-STEAM, property: steam_flow,               tag: FI-19}
+  20: {equipment: EM-COMPRESSOR,    property: power,                     tag: JI-20}
+  21: {equipment: EM-RX-COOLING,    property: cw_outlet_temperature,     tag: TI-21}
+  22: {equipment: EM-CONDENSER,     property: cw_outlet_temperature,     tag: TI-22}
+  23: {equipment: CM-AT-RXFEED,     property: composition_A,             tag: AI-23}
+  24: {equipment: CM-AT-RXFEED,     property: composition_B,             tag: AI-24}
+  25: {equipment: CM-AT-RXFEED,     property: composition_C,             tag: AI-25}
+  26: {equipment: CM-AT-RXFEED,     property: composition_D,             tag: AI-26}
+  27: {equipment: CM-AT-RXFEED,     property: composition_E,             tag: AI-27}
+  28: {equipment: CM-AT-RXFEED,     property: composition_F,             tag: AI-28}
+  29: {equipment: CM-AT-PURGE,      property: composition_A,             tag: AI-29}
+  30: {equipment: CM-AT-PURGE,      property: composition_B,             tag: AI-30}
+  31: {equipment: CM-AT-PURGE,      property: composition_C,             tag: AI-31}
+  32: {equipment: CM-AT-PURGE,      property: composition_D,             tag: AI-32}
+  33: {equipment: CM-AT-PURGE,      property: composition_E,             tag: AI-33}
+  34: {equipment: CM-AT-PURGE,      property: composition_F,             tag: AI-34}
+  35: {equipment: CM-AT-PURGE,      property: composition_G,             tag: AI-35}
+  36: {equipment: CM-AT-PURGE,      property: composition_H,             tag: AI-36}
+  37: {equipment: CM-AT-PRODUCT,    property: composition_D,             tag: AI-37}
+  38: {equipment: CM-AT-PRODUCT,    property: composition_E,             tag: AI-38}
+  39: {equipment: CM-AT-PRODUCT,    property: composition_F,             tag: AI-39}
+  40: {equipment: CM-AT-PRODUCT,    property: composition_G,             tag: AI-40}
+  41: {equipment: CM-AT-PRODUCT,    property: composition_H,             tag: AI-41}
+
+xmv:
+  1:  {equipment: CM-FV-01, property: position, process_equipment: EM-FEED-D}
+  2:  {equipment: CM-FV-02, property: position, process_equipment: EM-FEED-E}
+  3:  {equipment: CM-FV-03, property: position, process_equipment: EM-FEED-A}
+  4:  {equipment: CM-FV-04, property: position, process_equipment: EM-FEED-AC}
+  5:  {equipment: CM-RV-05, property: position, process_equipment: EM-COMPRESSOR}
+  6:  {equipment: CM-PV-06, property: position, process_equipment: EM-PURGE}
+  7:  {equipment: CM-LV-07, property: position, process_equipment: EM-SEPARATOR}
+  8:  {equipment: CM-LV-08, property: position, process_equipment: EM-STRIPPER}
+  9:  {equipment: CM-SV-09, property: position, process_equipment: EM-STRIPPER-STEAM}
+  10: {equipment: CM-TV-10, property: position, process_equipment: EM-RX-COOLING}
+  11: {equipment: CM-CV-11, property: position, process_equipment: EM-CONDENSER}
+  12: {equipment: CM-SC-12, property: speed,    process_equipment: EM-AGITATOR}
+
+# Disturbances act on (not "are") equipment. Targets for IDV(16..20) are derived from
+# where teprob.f consumes them (IDVWLK / IVST assignments, lines 347-358 and 793-798).
+idv:
+  1:  {equipment: [EM-FEED-AC]}
+  2:  {equipment: [EM-FEED-AC]}
+  3:  {equipment: [EM-FEED-D]}
+  4:  {equipment: [EM-RX-COOLING]}
+  5:  {equipment: [EM-CONDENSER]}
+  6:  {equipment: [EM-FEED-A]}
+  7:  {equipment: [EM-FEED-AC]}
+  8:  {equipment: [EM-FEED-AC]}
+  9:  {equipment: [EM-FEED-D]}
+  10: {equipment: [EM-FEED-AC]}
+  11: {equipment: [EM-RX-COOLING]}
+  12: {equipment: [EM-CONDENSER]}
+  13: {equipment: [EM-REACTOR]}
+  14: {equipment: [CM-TV-10]}
+  15: {equipment: [CM-CV-11]}
+  16: {equipment: [EM-STRIPPER-STEAM], code_effect: "TESUB8(9) random walk on stripper steam heat transfer UAC"}
+  17: {equipment: [EM-RX-COOLING],     code_effect: "TESUB8(10) random walk on reactor heat transfer QUR"}
+  18: {equipment: [EM-CONDENSER],      code_effect: "TESUB8(11) random walk on condenser heat transfer QUS"}
+  19: {equipment: [CM-RV-05, CM-LV-07, CM-LV-08, CM-SV-09], code_effect: "valve sticking IVST(5,7,8,9)"}
+  20: {equipment: [EM-SEPARATOR],      code_effect: "TESUB8(12) random walk on reactor-to-separator flow coefficient"}

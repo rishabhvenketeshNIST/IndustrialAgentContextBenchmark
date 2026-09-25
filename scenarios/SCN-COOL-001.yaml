@@ -1,0 +1,38 @@
+scenario:
+  id: SCN-COOL-001
+  name: Demonstration - reactor cooling water pump degradation
+  description: >-
+    Three hours of Mode 1 operation. At 1 h the duty reactor cooling-water pump P-101A starts to
+    degrade (hidden cause, no direct indication). Health falls over 30 min, the deliverable
+    cooling-water capacity falls below the circuit design flow, the native TC-RCW/TC-RX cascade
+    opens the reactor CW valve until it saturates and reactor temperature rises. Condition
+    monitoring raises a vibration alarm; after the maintenance response time a technician switches
+    to standby pump P-101B and then repairs P-101A. Capacity returns, but the wound-up native
+    cascade over-cools the reactor: the G/H product split shifts, a product sample fails and its
+    lot is quarantined, and reactor temperature is still below setpoint at the end of the run.
+    Nothing downstream of the pump is set directly.
+  seed: 18472
+  duration_seconds: 10800
+  simulation_start: "2026-01-05T06:00:00Z"
+  backend: auto
+  control_mode: CLOSED_LOOP
+  faults:
+    - id: F-COOL-001
+      type: cooling_degradation
+      target: WU-CWP-101A
+      trigger: {mode: simulation_time, time: 3600}
+      severity: 0.62
+      progression: {mode: gradual, ramp_s: 1800}
+      duration: 1800
+      direct_indication: false
+      description: Impeller erosion / wear ring damage on reactor CW duty pump P-101A
+      expected_effects:
+        - P-101A health and deliverable flow decrease; vibration increases
+        - reactor cooling water capacity (UT-CW-REACTOR) drops below design flow
+        - XMV(10) reactor CW valve opens and saturates at 100 %
+        - reactor temperature XMEAS(9) rises above setpoint
+        - product G/H split (XMEAS 40/41) shifts; G mass-% test fails
+        - maintenance work order restores capacity via standby pump P-101B
+  production_orders:
+    - {order_id: PO-2026-0201, product_id: PROD-GH-M1, quantity: 20000, unit: kg, priority: 2, planned_start: 0, planned_end: 5400, customer: Northwind Polymers}
+    - {order_id: PO-2026-0202, product_id: PROD-GH-M1, quantity: 20000, unit: kg, priority: 3, planned_start: 3600, planned_end: 10800, customer: Contoso Coatings}

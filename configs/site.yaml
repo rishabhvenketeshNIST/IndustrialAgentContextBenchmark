@@ -1,0 +1,312 @@
+# ISA-95 equipment hierarchy of the simulated site.
+#
+# origin: TEP        -> the equipment exists in the Downs & Vogel process model (teprob.f)
+# origin: ENTERPRISE -> added by the enterprise simulation layer (utilities, storage, QC, ...)
+#
+# Rules used to place control modules (CM):
+#   * a loop whose output is an XMV lives under the equipment module of its final control element
+#   * a cascade master (output = another loop's setpoint) lives under the equipment module of its PV
+# TEP variables are attached to these elements in configs/tep_mapping.yaml; they are not equipment.
+
+enterprise:
+  id: ENT-ACME
+  name: ACME Manufacturing
+  level: Enterprise
+  origin: ENTERPRISE
+  description: Enterprise owning the Tennessee Eastman manufacturing site.
+  children:
+    - id: SITE-TE
+      name: Tennessee Eastman Manufacturing Site
+      level: Site
+      origin: ENTERPRISE
+      description: >-
+        Single continuous-process site. The Tennessee Eastman Process (Downs & Vogel 1993) is the
+        primary production process: A + C + D -> G, A + C + E -> H (plus by-product F).
+      attributes: {timezone: UTC, operating_mode: "TEP Mode 1 (50/50 G/H)"}
+      children:
+
+        # ------------------------------------------------------------------ Feed
+        - id: AREA-FEED
+          name: Feed Area
+          level: Area
+          origin: TEP
+          description: Gaseous and liquid reactant feed streams 1-4 to the reactor.
+          children:
+            - id: PU-FEED
+              name: Reactant Feed System
+              level: ProductionUnit
+              origin: TEP
+              description: Flow-controlled supply of A, D, E and A/C reactants.
+              children:
+                - id: EM-FEED-A
+                  name: A Feed (Stream 1)
+                  level: EquipmentModule
+                  origin: TEP
+                  class: feed_line
+                  attributes: {stream: 1, material: MAT-A}
+                  children:
+                    - {id: CM-FV-03, name: A Feed Valve FV-03, level: ControlModule, origin: TEP, class: control_valve, attributes: {xmv: 3}}
+                    - {id: CM-FIC-A, name: A Feed Flow Controller FC-A, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 3}}
+                - id: EM-FEED-D
+                  name: D Feed (Stream 2)
+                  level: EquipmentModule
+                  origin: TEP
+                  class: feed_line
+                  attributes: {stream: 2, material: MAT-D}
+                  children:
+                    - {id: CM-FV-01, name: D Feed Valve FV-01, level: ControlModule, origin: TEP, class: control_valve, attributes: {xmv: 1}}
+                    - {id: CM-FIC-D, name: D Feed Flow Controller FC-D, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 1}}
+                - id: EM-FEED-E
+                  name: E Feed (Stream 3)
+                  level: EquipmentModule
+                  origin: TEP
+                  class: feed_line
+                  attributes: {stream: 3, material: MAT-E}
+                  children:
+                    - {id: CM-FV-02, name: E Feed Valve FV-02, level: ControlModule, origin: TEP, class: control_valve, attributes: {xmv: 2}}
+                    - {id: CM-FIC-E, name: E Feed Flow Controller FC-E, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 2}}
+                - id: EM-FEED-AC
+                  name: A and C Feed (Stream 4)
+                  level: EquipmentModule
+                  origin: TEP
+                  class: feed_line
+                  attributes: {stream: 4, material: MAT-AC}
+                  children:
+                    - {id: CM-FV-04, name: A/C Feed Valve FV-04, level: ControlModule, origin: TEP, class: control_valve, attributes: {xmv: 4}}
+                    - {id: CM-FIC-AC, name: A/C Feed Flow Controller FC-AC, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 4}}
+
+        # ------------------------------------------------------------------ Reaction
+        - id: AREA-REACTION
+          name: Reaction Area
+          level: Area
+          origin: TEP
+          description: Two-phase exothermic reactor with internal cooling bundle and agitator.
+          children:
+            - id: PU-REACTOR
+              name: Reactor Production Unit
+              level: ProductionUnit
+              origin: TEP
+              children:
+                - id: EM-REACTOR
+                  name: Reactor R-101
+                  level: EquipmentModule
+                  origin: TEP
+                  class: reactor_vessel
+                  description: Gas-phase reactants form liquid products G and H; vapor leaves to the condenser.
+                  children:
+                    - {id: CM-TIC-RX, name: Reactor Temperature Controller TC-RX, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 18}}
+                    - {id: CM-LIC-RX, name: Reactor Level Controller LC-RX, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 17}}
+                    - id: CM-AT-RXFEED
+                      name: Reactor Feed Analyzer AT-06 (Stream 6)
+                      level: ControlModule
+                      origin: TEP
+                      class: online_analyzer
+                      attributes: {sample_period_h: 0.1, dead_time_h: 0.1}
+                      children:
+                        - {id: CM-AIC-RFA, name: Reactor Feed A Composition Controller AC-RFA, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 13}}
+                        - {id: CM-AIC-RFD, name: Reactor Feed D Composition Controller AC-RFD, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 14}}
+                        - {id: CM-AIC-RFE, name: Reactor Feed E Composition Controller AC-RFE, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 15}}
+                - id: EM-RX-COOLING
+                  name: Reactor Cooling Bundle
+                  level: EquipmentModule
+                  origin: TEP
+                  class: heat_exchanger
+                  description: Internal cooling-water bundle removing the heat of reaction.
+                  attributes: {utility: UT-CW-REACTOR}
+                  children:
+                    - {id: CM-TV-10, name: Reactor CW Valve TV-10, level: ControlModule, origin: TEP, class: control_valve, attributes: {xmv: 10}}
+                    - {id: CM-TIC-RCW, name: Reactor CW Outlet Temperature Controller TC-RCW, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 10}}
+                - id: EM-AGITATOR
+                  name: Reactor Agitator M-101
+                  level: EquipmentModule
+                  origin: TEP
+                  class: agitator
+                  children:
+                    - {id: CM-SC-12, name: Agitator Speed Drive SC-12, level: ControlModule, origin: TEP, class: variable_speed_drive, attributes: {xmv: 12}}
+
+        # ------------------------------------------------------------------ Separation
+        - id: AREA-SEPARATION
+          name: Separation Area
+          level: Area
+          origin: TEP
+          children:
+            - id: PU-SEPARATION
+              name: Condensation and Separation Unit
+              level: ProductionUnit
+              origin: TEP
+              children:
+                - id: EM-CONDENSER
+                  name: Product Condenser E-101
+                  level: EquipmentModule
+                  origin: TEP
+                  class: heat_exchanger
+                  attributes: {utility: UT-CW-CONDENSER}
+                  children:
+                    - {id: CM-CV-11, name: Condenser CW Valve CV-11, level: ControlModule, origin: TEP, class: control_valve, attributes: {xmv: 11}}
+                    - id: CM-FIC-PRD
+                      name: Product Flow Controller FC-PRD
+                      level: ControlModule
+                      origin: TEP
+                      class: pid_loop
+                      description: Native Braatz scheme - stripper underflow (XMEAS 17) is controlled with the condenser cooling water valve (XMV 11).
+                      attributes: {loop_id: 11}
+                - id: EM-SEPARATOR
+                  name: Vapor-Liquid Separator V-102
+                  level: EquipmentModule
+                  origin: TEP
+                  class: separator_vessel
+                  children:
+                    - {id: CM-LV-07, name: Separator Liquid Valve LV-07, level: ControlModule, origin: TEP, class: control_valve, attributes: {xmv: 7}}
+                    - {id: CM-LIC-SEP, name: Separator Level Controller LC-SEP, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 7}}
+
+        # ------------------------------------------------------------------ Recycle & purge
+        - id: AREA-RECYCLE
+          name: Recycle and Purge Area
+          level: Area
+          origin: TEP
+          children:
+            - id: PU-RECYCLE
+              name: Recycle Gas Unit
+              level: ProductionUnit
+              origin: TEP
+              children:
+                - id: EM-COMPRESSOR
+                  name: Recycle Compressor K-101
+                  level: EquipmentModule
+                  origin: TEP
+                  class: centrifugal_compressor
+                  attributes: {utility: UT-POWER}
+                  children:
+                    - {id: CM-RV-05, name: Compressor Recycle Valve RV-05, level: ControlModule, origin: TEP, class: control_valve, attributes: {xmv: 5}}
+                    - {id: CM-FIC-RCY, name: Recycle Flow Controller FC-RCY, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 5}}
+                - id: EM-PURGE
+                  name: Purge System
+                  level: EquipmentModule
+                  origin: TEP
+                  class: purge_line
+                  children:
+                    - {id: CM-PV-06, name: Purge Valve PV-06, level: ControlModule, origin: TEP, class: control_valve, attributes: {xmv: 6}}
+                    - {id: CM-FIC-PRG, name: Purge Flow Controller FC-PRG, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 6}}
+                    - id: CM-AT-PURGE
+                      name: Purge Gas Analyzer AT-09 (Stream 9)
+                      level: ControlModule
+                      origin: TEP
+                      class: online_analyzer
+                      attributes: {sample_period_h: 0.1, dead_time_h: 0.1}
+                      children:
+                        - {id: CM-AIC-PRGB, name: Purge B Composition Controller AC-PRGB, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 19}}
+
+        # ------------------------------------------------------------------ Stripping
+        - id: AREA-STRIPPING
+          name: Stripping Area
+          level: Area
+          origin: TEP
+          children:
+            - id: PU-STRIPPER
+              name: Product Stripper Unit
+              level: ProductionUnit
+              origin: TEP
+              children:
+                - id: EM-STRIPPER
+                  name: Product Stripper C-101
+                  level: EquipmentModule
+                  origin: TEP
+                  class: stripping_column
+                  children:
+                    - {id: CM-LV-08, name: Stripper Product Valve LV-08, level: ControlModule, origin: TEP, class: control_valve, attributes: {xmv: 8}}
+                    - {id: CM-LIC-STR, name: Stripper Level Controller LC-STR, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 8}}
+                    - {id: CM-TIC-STR, name: Stripper Temperature Controller TC-STR, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 16}}
+                    - id: CM-AT-PRODUCT
+                      name: Product Analyzer AT-11 (Stream 11)
+                      level: ControlModule
+                      origin: TEP
+                      class: online_analyzer
+                      attributes: {sample_period_h: 0.25, dead_time_h: 0.25}
+                      children:
+                        - {id: CM-AIC-PRDE, name: Product E Composition Controller AC-PRDE, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 20}}
+                - id: EM-STRIPPER-STEAM
+                  name: Stripper Steam Reboiler
+                  level: EquipmentModule
+                  origin: TEP
+                  class: steam_heater
+                  attributes: {utility: UT-STEAM}
+                  children:
+                    - {id: CM-SV-09, name: Stripper Steam Valve SV-09, level: ControlModule, origin: TEP, class: control_valve, attributes: {xmv: 9}}
+                    - {id: CM-FIC-STM, name: Stripper Steam Flow Controller FC-STM, level: ControlModule, origin: TEP, class: pid_loop, attributes: {loop_id: 9}}
+
+        # ------------------------------------------------------------------ Product storage & QC
+        - id: AREA-PRODUCT
+          name: Product Storage and Quality Area
+          level: Area
+          origin: ENTERPRISE
+          description: Finished product receipt, quality control and dispatch.
+          children:
+            - id: SZ-PRODUCT
+              name: Finished Product Tank Farm
+              level: StorageZone
+              origin: ENTERPRISE
+              children:
+                - {id: SU-TK-501, name: Product Rundown Tank TK-501, level: StorageUnit, origin: ENTERPRISE, class: product_tank, attributes: {capacity_kg: 250000}}
+                - {id: SU-TK-502, name: Released Product Tank TK-502, level: StorageUnit, origin: ENTERPRISE, class: product_tank, attributes: {capacity_kg: 600000}}
+                - {id: SU-TK-503, name: Off-Spec / Rework Tank TK-503, level: StorageUnit, origin: ENTERPRISE, class: product_tank, attributes: {capacity_kg: 150000}}
+            - id: WC-QC
+              name: Quality Control Laboratory
+              level: WorkCenter
+              origin: ENTERPRISE
+              children:
+                - {id: WU-QC-LAB, name: QC Analysis Bench, level: WorkUnit, origin: ENTERPRISE, class: laboratory}
+
+        # ------------------------------------------------------------------ Raw material storage
+        - id: AREA-RAW
+          name: Raw Material Storage Area
+          level: Area
+          origin: ENTERPRISE
+          children:
+            - id: SZ-RAW
+              name: Reactant Storage Zone
+              level: StorageZone
+              origin: ENTERPRISE
+              children:
+                - {id: SU-SPH-103, name: A Feed Gas Storage SPH-103, level: StorageUnit, origin: ENTERPRISE, class: gas_storage, attributes: {material: MAT-A, feeds: EM-FEED-A}}
+                - {id: SU-TK-101, name: D Feed Tank TK-101, level: StorageUnit, origin: ENTERPRISE, class: liquid_tank, attributes: {material: MAT-D, feeds: EM-FEED-D}}
+                - {id: SU-TK-102, name: E Feed Tank TK-102, level: StorageUnit, origin: ENTERPRISE, class: liquid_tank, attributes: {material: MAT-E, feeds: EM-FEED-E}}
+                - {id: SU-SPH-104, name: A/C Feed Gas Storage SPH-104, level: StorageUnit, origin: ENTERPRISE, class: gas_storage, attributes: {material: MAT-AC, feeds: EM-FEED-AC}}
+            - id: SZ-WAREHOUSE
+              name: Warehouse
+              level: StorageZone
+              origin: ENTERPRISE
+              children:
+                - {id: SU-WH-MRO, name: MRO Spare Parts Store, level: StorageUnit, origin: ENTERPRISE, class: warehouse}
+                - {id: SU-WH-FG, name: Finished Goods Dispatch Bay, level: StorageUnit, origin: ENTERPRISE, class: warehouse}
+
+        # ------------------------------------------------------------------ Utilities
+        - id: AREA-UTILITIES
+          name: Utilities Area
+          level: Area
+          origin: ENTERPRISE
+          description: Cooling water, steam and electrical power supplied to the process.
+          children:
+            - id: WC-CW
+              name: Cooling Water System
+              level: WorkCenter
+              origin: ENTERPRISE
+              description: Two cooling-water circuits (reactor, condenser) served by one cooling tower.
+              children:
+                - {id: WU-CT-101, name: Cooling Tower CT-101, level: WorkUnit, origin: ENTERPRISE, class: cooling_tower}
+                - {id: WU-CWP-101A, name: Reactor CW Pump P-101A, level: WorkUnit, origin: ENTERPRISE, class: centrifugal_pump}
+                - {id: WU-CWP-101B, name: Reactor CW Pump P-101B (standby), level: WorkUnit, origin: ENTERPRISE, class: centrifugal_pump}
+                - {id: WU-CWP-201A, name: Condenser CW Pump P-201A, level: WorkUnit, origin: ENTERPRISE, class: centrifugal_pump}
+                - {id: WU-CWP-201B, name: Condenser CW Pump P-201B (standby), level: WorkUnit, origin: ENTERPRISE, class: centrifugal_pump}
+            - id: WC-STEAM
+              name: Steam System
+              level: WorkCenter
+              origin: ENTERPRISE
+              children:
+                - {id: WU-BLR-301, name: Package Boiler B-301, level: WorkUnit, origin: ENTERPRISE, class: boiler}
+            - id: WC-POWER
+              name: Electrical Power System
+              level: WorkCenter
+              origin: ENTERPRISE
+              children:
+                - {id: WU-TX-401, name: Main Transformer TX-401, level: WorkUnit, origin: ENTERPRISE, class: transformer}
+                - {id: WU-MCC-401, name: Motor Control Center MCC-401, level: WorkUnit, origin: ENTERPRISE, class: motor_control_center}

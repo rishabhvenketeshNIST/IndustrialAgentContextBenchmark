@@ -1,0 +1,11 @@
+# Finished-goods handling: product lots move between tanks according to QC disposition,
+# released product is dispatched on a fixed loading schedule.
+locations:
+  rundown: SU-TK-501       # product enters here while in process / awaiting QC / quarantined
+  released: SU-TK-502
+  rejected: SU-TK-503
+  dispatch: SU-WH-FG
+dispatch:
+  first_at_s: 5400
+  interval_s: 3600
+  quantity_kg: 12000

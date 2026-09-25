@@ -1,0 +1,9 @@
+# Engine-level settings.
+trend:
+  interval_s: 10          # in-memory trend sampling period (simulated seconds)
+  capacity: 20000         # ring-buffer size (10 s x 20000 = 55 h)
+event_log:
+  max_events: 250000
+runner:
+  default_speed: 10.0     # x real time
+  max_steps_per_tick: 2000

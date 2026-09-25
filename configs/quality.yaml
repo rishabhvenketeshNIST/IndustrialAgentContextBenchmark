@@ -1,0 +1,53 @@
+# Quality rules (configurable benchmark defaults).
+#
+# Product quality is computed from the TEP product analyzer, stream 11: XMEAS(37..41) = mol% D,E,F,G,H
+# (sampled every 0.25 h with 0.25 h dead time, teprob.f). Mode 1 of Downs & Vogel specifies a
+# 50/50 G/H mass ratio; mass fractions use the component molecular weights in TEINIT (G 62, H 76).
+# Limits are set well outside the analyzer noise (XNS(40,41) = 0.5 mol%).
+
+laboratory: WU-QC-LAB
+sample_sources:
+  product_analyzer:
+    analyzer: CM-AT-PRODUCT
+    analyzer_group: product          # new result when XMEAS(37..41) update
+    dead_time_s: 900                 # result represents product made 0.25 h earlier
+    product_id: PROD-GH-M1
+
+product_specifications:
+  PROD-GH-M1:
+    tests:
+      - id: G_MASS_PCT
+        name: G share of G+H (mass %)
+        unit: "%"
+        inputs: {G: XMEAS(40), H: XMEAS(41)}
+        expression: "100 * 62 * G / (62 * G + 76 * H)"
+        target: 50.0
+        low: 47.5
+        high: 52.5
+      - id: GH_PURITY
+        name: G + H content (mol %)
+        unit: mol%
+        inputs: {G: XMEAS(40), H: XMEAS(41)}
+        expression: "G + H"
+        low: 95.0
+      - id: E_IMPURITY
+        name: E in product (mol %)
+        unit: mol%
+        inputs: {E: XMEAS(38)}
+        expression: "E"
+        target: 0.8357
+        high: 1.20
+      - id: F_BYPRODUCT
+        name: F by-product in product (mol %)
+        unit: mol%
+        inputs: {F: XMEAS(39)}
+        expression: "F"
+        high: 0.20
+
+lot_disposition:
+  release_if_failed_fraction_at_most: 0.0
+  quarantine_if_failed_fraction_at_most: 0.25   # above -> REJECTED
+  no_samples: QUARANTINE
+
+raw_material_inspection:
+  delay_s: 600                     # incoming inspection time for delivered lots

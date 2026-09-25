@@ -1,0 +1,49 @@
+scenario:
+  id: SCN-FAULT-LIBRARY
+  name: Fault library - example definitions of every fault type
+  description: >-
+    Normal operation with example faults of every enterprise type pre-defined as MANUAL faults
+    (start them from the Fault Injection panel) plus two scheduled TEP-native disturbances.
+    Intended as a template for benchmark scenario authors.
+  seed: 4242
+  duration_seconds: 28800
+  simulation_start: "2026-01-06T06:00:00Z"
+  backend: auto
+  control_mode: CLOSED_LOOP
+  production_orders:
+    - {order_id: PO-2026-0301, product_id: PROD-GH-M1, quantity: 60000, unit: kg, priority: 2, planned_start: 0, planned_end: 18000}
+    - {order_id: PO-2026-0302, product_id: PROD-GH-M1, quantity: 40000, unit: kg, priority: 3, planned_start: 14400, planned_end: 28800}
+  planned_maintenance:
+    - {asset_id: WU-CT-101, start_s: 21600, task: Cooling tower fan inspection, priority: 3, duration_s: 1800}
+  faults:
+    # ---- TEP native (scheduled) -------------------------------------------------------
+    - {id: F-IDV4-STEP, type: IDV4, target: TEP, trigger: {mode: simulation_time, time: 3600}, duration: 3600,
+       description: Reactor cooling water inlet temperature step (+5 degC, teprob.f)}
+    - {id: F-IDV14-STICK, type: IDV14, target: TEP, trigger: {mode: simulation_time, time: 14400},
+       progression: {mode: intermittent, period_s: 1200, duty: 0.5}, duration: 3600,
+       description: Reactor CW valve sticking, intermittent}
+    # ---- enterprise (manual - start from the UI or API) ----------------------------------
+    - {id: F-EQ-DEGR, type: equipment_degradation, target: EM-COMPRESSOR, trigger: {mode: manual}, severity: 0.4,
+       progression: {mode: gradual, ramp_s: 3600}, direct_indication: false}
+    - {id: F-PUMP-EFF, type: pump_efficiency_loss, target: WU-CWP-201A, trigger: {mode: manual}, severity: 0.6,
+       progression: {mode: gradual, ramp_s: 1800}, direct_indication: false}
+    - {id: F-FAIL-CWP, type: equipment_failure, target: WU-CWP-101A, trigger: {mode: manual}, direct_indication: true}
+    - {id: F-COOL-CT, type: cooling_degradation, target: WU-CT-101, trigger: {mode: manual}, severity: 0.8,
+       progression: {mode: gradual, ramp_s: 3600}}
+    - {id: F-SENS-BIAS, type: sensor_bias, target: EM-REACTOR.temperature, trigger: {mode: manual}, parameters: {bias: 2.0}}
+    - {id: F-SENS-DRIFT, type: sensor_drift, target: XMEAS(12), trigger: {mode: manual}, parameters: {rate_per_h: 8.0}}
+    - {id: F-SENS-DROP, type: sensor_dropout, target: XMEAS(15), trigger: {mode: manual}, duration: 900}
+    - {id: F-UTIL-STEAM, type: utility_capacity_loss, target: UT-STEAM, trigger: {mode: manual}, severity: 0.7, duration: 3600}
+    - {id: F-UTIL-POWER, type: utility_capacity_loss, target: UT-POWER, trigger: {mode: manual}, severity: 0.6, duration: 1800}
+    - {id: F-RM-QUAL, type: raw_material_quality_deviation, target: MAT-AC, trigger: {mode: manual}, severity: 1.0,
+       parameters: {attribute: feed_b_fraction, max_deviation: 0.01}}
+    - {id: F-RM-SHORT, type: raw_material_shortage, target: MAT-D, trigger: {mode: manual}, severity: 0.9}
+    - {id: F-MNT-DELAY, type: maintenance_delay, target: MAINTENANCE, trigger: {mode: manual}, severity: 1.0,
+       parameters: {max_delay_s: 5400}}
+    - {id: F-SPARE, type: spare_part_shortage, target: SP-IMP-101, trigger: {mode: manual}}
+    - {id: F-ORDER, type: production_order_delay, target: PO-2026-0302, trigger: {mode: manual}, severity: 1.0,
+       parameters: {max_delay_s: 3600}}
+    - {id: F-QUAL, type: quality_failure, target: E_IMPURITY, trigger: {mode: manual}, severity: 0.5, duration: 3600}
+    - {id: F-EVENT, type: maintenance_delay, target: MAINTENANCE, severity: 0.5,
+       trigger: {mode: event, event_type: EQUIPMENT_FAILED, delay_s: 0},
+       description: Example event-triggered fault - dispatch slows down once any equipment fails}

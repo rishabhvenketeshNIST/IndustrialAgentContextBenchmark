@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ACME TEP Site Simulator</title>
+  <link rel="stylesheet" href="/ui/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><b>ACME Manufacturing</b><span>Tennessee Eastman Manufacturing Site · Enterprise Simulator</span></div>
+
+  <div class="group">
+    <label for="scenario-select">Scenario</label>
+    <select id="scenario-select" title="Scenario"></select>
+    <label for="duration-select">Duration</label>
+    <select id="duration-select" title="Simulation duration">
+      <option value="">scenario</option>
+      <option value="3600">1 h</option>
+      <option value="10800">3 h</option>
+      <option value="28800">8 h</option>
+      <option value="86400">24 h</option>
+      <option value="172800">48 h</option>
+    </select>
+    <button id="btn-load" title="Create a fresh simulation from the selected scenario">Load</button>
+  </div>
+
+  <div class="group">
+    <button id="btn-start" class="primary">▶ Start</button>
+    <button id="btn-pause">❚❚ Pause</button>
+    <button id="btn-resume">▶ Resume</button>
+    <select id="step-size" title="Step size">
+      <option value="1">1 s</option><option value="60">1 min</option><option value="600" selected>10 min</option>
+      <option value="3600">1 h</option>
+    </select>
+    <button id="btn-step">Step</button>
+    <button id="btn-reset" title="Return to t = 0 with the same scenario and seed">⟲ Reset</button>
+  </div>
+
+  <div class="group">
+    <label for="speed-select">Speed</label>
+    <select id="speed-select">
+      <option value="0.1">0.1×</option><option value="1">1×</option><option value="5">5×</option>
+      <option value="10" selected>10×</option><option value="100">100×</option><option value="500">500×</option>
+      <option value="2000">2000×</option>
+    </select>
+  </div>
+
+  <div class="clock">
+    <span class="t" id="clock-t">--:--:--</span>
+    <span class="sub" id="clock-sub">no simulation</span>
+    <div class="progress"><div id="clock-bar"></div></div>
+  </div>
+
+  <div class="spacer"></div>
+  <span class="badge" id="badge-run"><span class="dot"></span><span>READY</span></span>
+  <span class="badge" id="badge-process"><span class="dot"></span><span>PROCESS</span></span>
+  <span class="badge" id="badge-alarms"><span class="dot"></span><span>0 alarms</span></span>
+  <div class="group">
+    <button id="btn-export-json" title="Export run (JSON)">⭳ JSON</button>
+    <button id="btn-export-csv" title="Export run (CSV zip)">⭳ CSV</button>
+    <button id="btn-theme" title="Toggle light / dark">◐</button>
+  </div>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<main>
+  <section class="panel" id="tree-panel">
+    <h2>ISA-95 Hierarchy <span class="spacer"></span><button class="small" id="btn-expand">expand all</button></h2>
+    <div class="body"><ul class="tree" id="tree"></ul></div>
+  </section>
+
+  <section class="panel" id="center-panel">
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="process">Process</button>
+      <button class="tab" data-tab="variables">Loops &amp; Variables</button>
+      <button class="tab" data-tab="utilities">Utilities</button>
+      <button class="tab" data-tab="maintenance">Maintenance</button>
+      <button class="tab" data-tab="inventory">Inventory &amp; Warehouse</button>
+      <button class="tab" data-tab="quality">Quality</button>
+      <button class="tab" data-tab="production">Production</button>
+      <button class="tab" data-tab="alarms">Alarms &amp; Events</button>
+      <button class="tab" data-tab="causal">Causal Model</button>
+      <button class="tab" data-tab="scenario">Scenario</button>
+      <button class="tab bench" data-tab="faults">⚠ Fault Injection (benchmark)</button>
+    </nav>
+    <div class="tabpane active" id="pane-process"><svg id="schematic" viewBox="0 0 1140 560" role="img"
+         aria-label="Process schematic of the Tennessee Eastman process"></svg></div>
+    <div class="tabpane" id="pane-variables"></div>
+    <div class="tabpane" id="pane-utilities"></div>
+    <div class="tabpane" id="pane-maintenance"></div>
+    <div class="tabpane" id="pane-inventory"></div>
+    <div class="tabpane" id="pane-quality"></div>
+    <div class="tabpane" id="pane-production"></div>
+    <div class="tabpane" id="pane-alarms"></div>
+    <div class="tabpane" id="pane-causal"></div>
+    <div class="tabpane" id="pane-scenario"></div>
+    <div class="tabpane" id="pane-faults"></div>
+  </section>
+
+  <section class="panel" id="detail-panel">
+    <h2>Selected element</h2>
+    <div class="body" id="detail"></div>
+  </section>
+
+  <section class="panel" id="trend-panel">
+    <h2>Trends <span class="muted" style="text-transform:none;letter-spacing:0">in-memory buffer · cleared on reset · not a historian</span></h2>
+    <div class="trend-toolbar">
+      <button class="small" id="btn-add-trend">+ Add series</button>
+      <span id="trend-chips"></span>
+      <span class="spacer"></span>
+      <label class="muted" for="trend-window">Window</label>
+      <select id="trend-window">
+        <option value="900">15 min</option><option value="3600">1 h</option>
+        <option value="10800" selected>3 h</option><option value="0">all</option>
+      </select>
+      <label class="muted"><input type="checkbox" id="trend-true"> show true value</label>
+    </div>
+    <div id="trend-grid"></div>
+  </section>
+</main>
+
+<div id="picker" class="hidden"><input id="picker-q" placeholder="Search series (e.g. reactor, XMEAS(9), health)"><div class="list" id="picker-list"></div></div>
+<div class="tooltip hidden" id="tooltip"></div>
+<script type="module" src="/ui/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+scenario:
+  id: SCN-BASELINE
+  name: Baseline - normal operation
+  description: Three hours of normal Mode 1 operation, no faults. Reference for reproducibility tests.
+  seed: 1001
+  duration_seconds: 10800
+  simulation_start: "2026-01-05T06:00:00Z"
+  backend: auto
+  control_mode: CLOSED_LOOP
+  production_orders:
+    - {order_id: PO-2026-0101, product_id: PROD-GH-M1, quantity: 20000, unit: kg, priority: 2, planned_start: 0, planned_end: 5400, customer: Northwind Polymers}
+    - {order_id: PO-2026-0102, product_id: PROD-GH-M1, quantity: 20000, unit: kg, priority: 3, planned_start: 3600, planned_end: 10800, customer: Contoso Coatings}
+  faults: []

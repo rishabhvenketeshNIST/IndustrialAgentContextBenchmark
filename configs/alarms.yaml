@@ -1,0 +1,79 @@
+# Alarm configuration.
+#
+# TEP interlock (trip) limits are taken from TEFUNC (teprob.f lines 702-710) and are NOT
+# configurable - see simulator/tep/catalog.py:SHUTDOWN_LIMITS. In XMEAS units they are:
+#   XMEAS(7) reactor pressure > 3000 kPa        XMEAS(9) reactor temperature > 175 degC
+#   XMEAS(8) reactor level  > 114.4 % / < -2.1 %   XMEAS(12) separator level > 136.6 % / < 2.7 %
+#   XMEAS(15) stripper level > 130.5 % / < -27.4 %
+# The pre-trip and operating alarms below are benchmark-specific and configurable.
+#
+# source:   XMEAS(n) (transmitted value) | <ENTITY>.<property>
+# type:     HIGH | LOW | EQUALS
+# maintenance: corrective | inspection  -> raises a work order on activation
+#                                         (maintenance_target overrides the alarmed equipment)
+
+defaults:
+  on_delay_s: 10
+  off_delay_s: 30
+  deadband_fraction: 0.01
+
+process:
+  - {id: PAH-07,  source: XMEAS(7),  type: HIGH, limit: 2850, priority: HIGH,     message: Reactor pressure high}
+  - {id: PAHH-07, source: XMEAS(7),  type: HIGH, limit: 2950, priority: CRITICAL, message: Reactor pressure high-high (trip at 3000 kPa)}
+  - {id: TAH-09,  source: XMEAS(9),  type: HIGH, limit: 122.5, priority: HIGH,    message: Reactor temperature high}
+  - {id: TAHH-09, source: XMEAS(9),  type: HIGH, limit: 150,  priority: CRITICAL, message: Reactor temperature high-high (trip at 175 degC)}
+  - {id: TAL-09,  source: XMEAS(9),  type: LOW,  limit: 118,  priority: MEDIUM,   message: Reactor temperature low}
+  - {id: LAH-08,  source: XMEAS(8),  type: HIGH, limit: 90,   priority: HIGH,     message: Reactor level high}
+  - {id: LAL-08,  source: XMEAS(8),  type: LOW,  limit: 50,   priority: HIGH,     message: Reactor level low}
+  - {id: LAH-12,  source: XMEAS(12), type: HIGH, limit: 85,   priority: HIGH,     message: Separator level high}
+  - {id: LAL-12,  source: XMEAS(12), type: LOW,  limit: 15,   priority: HIGH,     message: Separator level low}
+  - {id: PAH-13,  source: XMEAS(13), type: HIGH, limit: 2900, priority: HIGH,     message: Separator pressure high (purge override at 2950 kPa)}
+  - {id: LAH-15,  source: XMEAS(15), type: HIGH, limit: 85,   priority: HIGH,     message: Stripper level high}
+  - {id: LAL-15,  source: XMEAS(15), type: LOW,  limit: 15,   priority: HIGH,     message: Stripper level low}
+  - {id: TAL-18,  source: XMEAS(18), type: LOW,  limit: 60,   priority: MEDIUM,   message: Stripper temperature low}
+  - {id: FAL-19,  source: XMEAS(19), type: LOW,  limit: 120,  priority: MEDIUM,   message: Stripper steam flow low}
+  - {id: TAH-21,  source: XMEAS(21), type: HIGH, limit: 100,  priority: MEDIUM,   message: Reactor cooling water outlet temperature high}
+  - {id: FAL-17,  source: XMEAS(17), type: LOW,  limit: 18,   priority: MEDIUM,   message: Product flow low}
+
+controller_saturation:        # generated for every native loop whose output is an XMV
+  high: 98.0
+  low: 2.0
+  on_delay_s: 30
+  priority: MEDIUM
+
+measurement_quality:          # transmitter reports BAD (e.g. signal loss)
+  priority: HIGH
+  on_delay_s: 2
+
+equipment:
+  - {id: VAH-CWP101A, source: WU-CWP-101A.vibration, type: HIGH, limit: 3.8, priority: MEDIUM, message: Pump P-101A vibration high, maintenance: corrective, maintenance_priority: 2}
+  - {id: VAH-CWP101B, source: WU-CWP-101B.vibration, type: HIGH, limit: 3.8, priority: MEDIUM, message: Pump P-101B vibration high, maintenance: corrective, maintenance_priority: 2}
+  - {id: VAH-CWP201A, source: WU-CWP-201A.vibration, type: HIGH, limit: 3.8, priority: MEDIUM, message: Pump P-201A vibration high, maintenance: corrective, maintenance_priority: 2}
+  - {id: VAH-CWP201B, source: WU-CWP-201B.vibration, type: HIGH, limit: 3.8, priority: MEDIUM, message: Pump P-201B vibration high, maintenance: corrective, maintenance_priority: 2}
+  - {id: VAH-K101,    source: EM-COMPRESSOR.vibration, type: HIGH, limit: 3.8, priority: MEDIUM, message: Compressor K-101 vibration high, maintenance: corrective, maintenance_priority: 2}
+  - {id: XA-FAILED-CWP101A, source: WU-CWP-101A.status, type: EQUALS, value: FAILED, priority: HIGH, message: Pump P-101A failed}
+  - {id: XA-FAILED-CWP201A, source: WU-CWP-201A.status, type: EQUALS, value: FAILED, priority: HIGH, message: Pump P-201A failed}
+  - {id: XA-FAILED-K101,    source: EM-COMPRESSOR.status, type: EQUALS, value: FAILED, priority: CRITICAL, message: Compressor K-101 failed}
+  - {id: XA-FAILED-BLR301,  source: WU-BLR-301.status, type: EQUALS, value: FAILED, priority: HIGH, message: Boiler B-301 failed}
+
+utilities:
+  - {id: UA-CWRX-CAP,  source: UT-CW-REACTOR.utilization,   type: HIGH, limit: 0.97, priority: HIGH,   message: Reactor cooling water supply at capacity, maintenance: inspection, maintenance_target: WC-CW, maintenance_priority: 2, on_delay_s: 60}
+  - {id: UA-CWCD-CAP,  source: UT-CW-CONDENSER.utilization, type: HIGH, limit: 0.97, priority: HIGH,   message: Condenser cooling water supply at capacity, maintenance: inspection, maintenance_target: WC-CW, maintenance_priority: 2, on_delay_s: 60}
+  - {id: UA-CWRX-T,    source: UT-CW-REACTOR.temperature,   type: HIGH, limit: 38,   priority: MEDIUM, message: Reactor cooling water supply temperature high}
+  - {id: UA-STM-P,     source: UT-STEAM.pressure,           type: LOW,  limit: 8.0,  priority: HIGH,   message: Steam header pressure low}
+  - {id: UA-PWR-UTIL,  source: UT-POWER.utilization,        type: HIGH, limit: 0.95, priority: HIGH,   message: Electrical supply near capacity}
+  - {id: UA-PWR-V,     source: UT-POWER.voltage,            type: LOW,  limit: 6.3,  priority: HIGH,   message: Bus voltage low}
+
+inventory:
+  - {id: IA-TK101-L,  source: SU-TK-101.level_pct,  type: LOW, limit: 20, priority: MEDIUM, message: D feed tank level low}
+  - {id: IA-TK102-L,  source: SU-TK-102.level_pct,  type: LOW, limit: 20, priority: MEDIUM, message: E feed tank level low}
+  - {id: IA-SPH103-L, source: SU-SPH-103.level_pct, type: LOW, limit: 20, priority: MEDIUM, message: A feed storage low}
+  - {id: IA-SPH104-L, source: SU-SPH-104.level_pct, type: LOW, limit: 20, priority: MEDIUM, message: A/C feed storage low}
+  - {id: IA-TK101-E,  source: SU-TK-101.supply_availability,  type: LOW, limit: 0.999, priority: CRITICAL, message: D feed supply lost (tank empty)}
+  - {id: IA-TK102-E,  source: SU-TK-102.supply_availability,  type: LOW, limit: 0.999, priority: CRITICAL, message: E feed supply lost (tank empty)}
+  - {id: IA-SPH103-E, source: SU-SPH-103.supply_availability, type: LOW, limit: 0.999, priority: CRITICAL, message: A feed supply lost}
+  - {id: IA-SPH104-E, source: SU-SPH-104.supply_availability, type: LOW, limit: 0.999, priority: CRITICAL, message: A/C feed supply lost}
+
+quality:
+  - {id: QA-OFFSPEC,  source: WU-QC-LAB.last_result_fail,     type: HIGH, limit: 0.5, priority: HIGH,     message: Product analysis out of specification, on_delay_s: 0, off_delay_s: 0}
+  - {id: QA-OFFSPEC2, source: WU-QC-LAB.consecutive_failures, type: HIGH, limit: 1.5, priority: CRITICAL, message: Repeated off-specification product, on_delay_s: 0, off_delay_s: 0}

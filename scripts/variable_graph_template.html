@@ -1,0 +1,520 @@
+<!-- Template for scripts/build_variable_graph.py; __GRAPH__ is replaced with the graph JSON. -->
+<title>TEP Site Variable Graph</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  --bg: #eef0f2;
+  --panel: #fbfbfc;
+  --panel-2: #f2f4f6;
+  --ink: #111418;
+  --ink-2: #4a5059;
+  --muted: #7a818b;
+  --line: #d4d8dd;
+  --edge: #b3b9c1;
+  --edge-dim: rgba(120, 128, 138, 0.14);
+  --up: #1d3f73;
+  --down: #b4471a;
+  --focus: #2a78d6;
+  --c-fault: #e34948;
+  --c-equipment: #2a78d6;
+  --c-utility: #1baf7a;
+  --c-material: #eda100;
+  --c-boundary: #4a3aa7;
+  --c-xmv: #eb6834;
+  --c-control: #eb6834;
+  --c-xmeas: #008300;
+  --c-enterprise: #5d6673;
+  --node-fill: #ffffff;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111315;
+    --panel: #1a1c1f;
+    --panel-2: #22252a;
+    --ink: #f3f4f6;
+    --ink-2: #c1c6ce;
+    --muted: #8d949e;
+    --line: #2f3338;
+    --edge: #525962;
+    --edge-dim: rgba(160, 168, 178, 0.10);
+    --up: #8fb8f5;
+    --down: #f39a6d;
+    --focus: #3987e5;
+    --c-fault: #e66767;
+    --c-equipment: #3987e5;
+    --c-utility: #199e70;
+    --c-material: #c98500;
+    --c-boundary: #9085e9;
+    --c-xmv: #d95926;
+    --c-control: #d95926;
+    --c-xmeas: #1f9a1f;
+    --c-enterprise: #8a93a0;
+    --node-fill: #1f2226;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111315;
+  --panel: #1a1c1f;
+  --panel-2: #22252a;
+  --ink: #f3f4f6;
+  --ink-2: #c1c6ce;
+  --muted: #8d949e;
+  --line: #2f3338;
+  --edge: #525962;
+  --edge-dim: rgba(160, 168, 178, 0.10);
+  --up: #8fb8f5;
+  --down: #f39a6d;
+  --focus: #3987e5;
+  --c-fault: #e66767;
+  --c-equipment: #3987e5;
+  --c-utility: #199e70;
+  --c-material: #c98500;
+  --c-boundary: #9085e9;
+  --c-xmv: #d95926;
+  --c-control: #d95926;
+  --c-xmeas: #1f9a1f;
+  --c-enterprise: #8a93a0;
+  --node-fill: #1f2226;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans);
+  padding-inline: 16px; padding-block: 14px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+header { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: flex-end; justify-content: space-between; }
+h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { margin: 2px 0 0; color: var(--ink-2); max-width: 70ch; font-size: 13px; }
+.stats { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.toolbar label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+input[type="search"], select {
+  font: 13px var(--sans); color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 8px; min-width: 0;
+}
+input[type="search"] { width: 220px; max-width: 100%; }
+button {
+  font: 13px var(--sans); color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer;
+}
+button:hover { background: var(--panel-2); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 9px; border-radius: 999px;
+        border: 1px solid var(--line); background: var(--panel); cursor: pointer; user-select: none; }
+.chip[aria-pressed="false"] { opacity: 0.45; }
+.chip i { width: 14px; height: 0; border-top: 2px solid var(--edge); display: inline-block; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend b { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 12px; height: max(520px, calc(100vh - 250px)); }
+.stage { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-height: 460px; }
+.stage svg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.stage svg.dragging { cursor: grabbing; }
+.zoom { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 4px; }
+.zoom button { width: 32px; padding: 4px 0; font-family: var(--mono); }
+.hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--muted); pointer-events: none; }
+
+aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow: auto; min-height: 0; }
+aside h2 { font-size: 16px; margin: 0 0 2px; font-weight: 600; text-wrap: balance; }
+aside .id { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+aside p { margin: 10px 0; color: var(--ink-2); font-size: 13px; }
+aside h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 16px 0 6px; font-weight: 600; }
+.cat { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 6px; }
+.cat b { width: 10px; height: 10px; border-radius: 3px; }
+ul.links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+ul.links li { font-size: 12.5px; }
+ul.links a { color: var(--ink); text-decoration: none; font-family: var(--mono); font-size: 12px; cursor: pointer; border-bottom: 1px dotted var(--muted); }
+ul.links a:hover { color: var(--focus); }
+ul.links .why { display: block; color: var(--muted); font-size: 12px; }
+.counts { display: flex; gap: 16px; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.counts em { font-style: normal; font-weight: 600; }
+.up { color: var(--up); } .down { color: var(--down); }
+
+/* svg */
+.col-title { font: 600 11px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; fill: var(--muted); }
+.col-sub { font: 11px var(--sans); fill: var(--muted); }
+.edge { fill: none; stroke: var(--edge); stroke-width: 1.2; }
+.edge.physics { stroke-dasharray: 5 3; }
+.edge.control { stroke-width: 1.4; }
+.edge.event { stroke-dasharray: 1.5 3; stroke-width: 1.6; }
+.edge.module { stroke-dasharray: 8 2 1 2; }
+.edge.dim { stroke: var(--edge-dim); }
+.edge.hl-up { stroke: var(--up); stroke-width: 2; }
+.edge.hl-down { stroke: var(--down); stroke-width: 2; }
+.edge-hit { fill: none; stroke: transparent; stroke-width: 9; cursor: help; }
+.node rect.box { fill: var(--node-fill); stroke: var(--line); stroke-width: 1; }
+.node rect.tag { stroke: none; }
+.node text { font: 11px var(--mono); fill: var(--ink); }
+.node { cursor: pointer; }
+.node.dim { opacity: 0.18; }
+.node.sel rect.box { stroke: var(--focus); stroke-width: 2.4; }
+.node.up rect.box { stroke: var(--up); stroke-width: 1.6; }
+.node.down rect.box { stroke: var(--down); stroke-width: 1.6; }
+.node.match rect.box { stroke: var(--focus); stroke-width: 2; stroke-dasharray: 3 2; }
+.node:focus-visible rect.box { stroke: var(--focus); stroke-width: 2.4; }
+.node:focus { outline: none; }
+.tip { position: fixed; z-index: 10; pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+       border-radius: 6px; padding: 6px 9px; font-size: 12px; max-width: 340px; box-shadow: 0 4px 14px rgba(0,0,0,0.15); }
+.tip code { font-family: var(--mono); font-size: 11.5px; }
+
+@media (max-width: 900px) {
+  .workspace { grid-template-columns: 1fr; }
+  .workspace { height: auto; }
+  .stage { height: 62vh; }
+  aside { max-height: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<header>
+  <div>
+    <h1>TEP Site Variable Graph</h1>
+    <p class="lede">How every simulated variable is connected, from a benchmark fault cause, through equipment and utilities, across the TEP boundary parameters into the Fortran process, around the native control loops and out to quality, production and maintenance. Click any node to trace everything upstream and downstream of it.</p>
+  </div>
+  <div class="stats" id="stats"></div>
+</header>
+
+<div class="toolbar">
+  <label for="q">Find</label>
+  <input type="search" id="q" placeholder="e.g. XMEAS(9), health, VRNG">
+  <label for="preset">Trace</label>
+  <select id="preset">
+    <option value="">Choose a starting point…</option>
+    <option value="fault.WU-CWP-101A.damage">Demo fault: pump P-101A damage</option>
+    <option value="XMEAS(9)">Reactor temperature XMEAS(9)</option>
+    <option value="tep.boundary.reactor_cw_max_flow">VRNG(10) reactor CW capacity</option>
+    <option value="LOOP:TC-RX">Reactor temperature loop TC-RX</option>
+    <option value="fault.UT-POWER.capacity_loss">Power capacity loss</option>
+    <option value="SU-TK-101.quantity_kg">D feed tank stock</option>
+    <option value="LOT.disposition">Product lot disposition</option>
+  </select>
+  <button type="button" id="clear">Clear trace</button>
+  <div class="chips" id="edgeKinds" aria-label="Edge types"></div>
+</div>
+<div class="legend" id="legend"></div>
+
+<div class="workspace">
+  <div class="stage" id="stage">
+    <svg id="svg" role="img" aria-label="Layered graph of simulator variables and their causal connections"></svg>
+    <div class="hint" id="hint">Drag to pan · scroll or pinch to zoom · click a node to trace</div>
+    <div class="zoom"><button type="button" id="zin" aria-label="Zoom in">+</button><button type="button" id="zout" aria-label="Zoom out">−</button><button type="button" id="zfit" aria-label="Fit graph">⤢</button></div>
+  </div>
+  <aside id="detail" aria-live="polite"></aside>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script id="graph-data" type="application/json">__GRAPH__</script>
+<script>
+(() => {
+  const G = JSON.parse(document.getElementById("graph-data").textContent);
+  const NS = "http://www.w3.org/2000/svg";
+  const COLS = [
+    ["Causes", "fault-effect channels"],
+    ["Equipment", "condition & capability"],
+    ["Utilities & storage", "supply side"],
+    ["TEP boundary", "the only way in"],
+    ["Manipulated", "XMV valves & drives"],
+    ["Process", "XMEAS, computed by TEP"],
+    ["Native control", "temain_mod.f loops"],
+    ["Enterprise outputs", "observed & derived"],
+  ];
+  const CATS = {
+    fault: "Fault cause", equipment: "Equipment", utility: "Utility", material: "Material / storage",
+    boundary: "TEP boundary", xmv: "Manipulated variable", xmeas: "Process measurement",
+    control: "Control loop", enterprise: "Quality / production / maintenance",
+  };
+  const KINDS = {
+    coupling: ["Causal relation", "configs/coupling.yaml"],
+    physics: ["TEP physics", "computed inside TEFUNC"],
+    control: ["Native control", "PV, setpoint, output"],
+    module: ["Module logic", "inventory, quality, production, equipment"],
+    event: ["Discrete event", "alarms and work orders"],
+  };
+  const COL_W = 262, BOX_W = 196, ROW = 24, BOX_H = 18, TOP = 64, LEFT = 20;
+
+  const byId = new Map(G.nodes.map(n => [n.id, n]));
+  const out = new Map(), inc = new Map();
+  G.nodes.forEach(n => { out.set(n.id, []); inc.set(n.id, []); });
+  G.edges.forEach(e => { out.get(e.s).push(e); inc.get(e.t).push(e); });
+
+  // ---- short display labels -----------------------------------------------------------
+  G.nodes.forEach(n => {
+    let t;
+    if (n.cat === "xmeas" || n.cat === "xmv") t = n.label;
+    else if (n.cat === "control") t = `${n.label} · ${n.sub}`;
+    else if (n.cat === "boundary") t = n.label;
+    else if (n.id.includes(".") && !n.id.startsWith("fault.")) t = `${n.id.split(".")[0].replace(/^(WU|EM|SU|UT)-/, "")} · ${n.label}`;
+    else if (n.id.startsWith("fault.")) t = `${n.id.slice(6).split(".")[0].replace(/^(WU|EM|SU|UT)-/, "")} · ${n.label}`;
+    else t = n.label;
+    n.short = t.length > 30 ? t.slice(0, 29) + "…" : t;
+  });
+
+  // ---- layered layout: columns fixed, rows ordered by barycentre sweeps --------------------
+  const cols = COLS.map(() => []);
+  G.nodes.forEach(n => cols[n.layer].push(n));
+  cols.forEach(c => c.sort((a, b) => (a.sub + a.id).localeCompare(b.sub + b.id)));
+  const pos = () => cols.forEach(c => c.forEach((n, i) => { n.row = i; }));
+  pos();
+  const bary = (n, dir) => {
+    const nb = (dir ? inc : out).get(n.id).map(e => byId.get(dir ? e.s : e.t)).filter(m => m.layer !== n.layer);
+    if (!nb.length) return n.row;
+    return nb.reduce((s, m) => s + m.row * (cols[n.layer].length / Math.max(cols[m.layer].length, 1)), 0) / nb.length;
+  };
+  for (let it = 0; it < 12; it++) {
+    const order = it % 2 === 0 ? cols.map((_, i) => i) : cols.map((_, i) => cols.length - 1 - i);
+    for (const ci of order) {
+      const c = cols[ci];
+      const key = new Map(c.map(n => [n.id, (bary(n, true) + bary(n, false)) / 2]));
+      c.sort((a, b) => key.get(a.id) - key.get(b.id) || a.id.localeCompare(b.id));
+      c.forEach((n, i) => { n.row = i; });
+    }
+  }
+  const maxRows = Math.max(...cols.map(c => c.length));
+  cols.forEach((c, ci) => {
+    const off = (maxRows - c.length) * ROW / 2;
+    c.forEach((n, i) => { n.x = LEFT + ci * COL_W; n.y = TOP + off + i * ROW; });
+  });
+  const W = LEFT + COLS.length * COL_W, H = TOP + maxRows * ROW + 30;
+
+  // ---- render -------------------------------------------------------------------------
+  const svg = document.getElementById("svg");
+  const root = document.createElementNS(NS, "g");
+  svg.appendChild(root);
+  const el = (tag, attrs, parent) => {
+    const x = document.createElementNS(NS, tag);
+    for (const k in attrs) x.setAttribute(k, attrs[k]);
+    (parent || root).appendChild(x);
+    return x;
+  };
+  COLS.forEach(([t, s], ci) => {
+    const x = LEFT + ci * COL_W;
+    el("text", { x, y: 22, class: "col-title" }).textContent = t;
+    el("text", { x, y: 38, class: "col-sub" }).textContent = s;
+  });
+  const gEdges = el("g", {}), gHits = el("g", {}), gNodes = el("g", {});
+  const edgePath = (a, b) => {
+    const sx = a.x + BOX_W, sy = a.y + BOX_H / 2, tx = b.x, ty = b.y + BOX_H / 2;
+    if (b.layer > a.layer) {
+      const dx = (tx - sx) * 0.5;
+      return `M${sx},${sy} C${sx + dx},${sy} ${tx - dx},${ty} ${tx},${ty}`;
+    }
+    // feedback or same-column edge: loop out right and come back in from the left
+    const bend = Math.max(60, Math.abs(ty - sy) * 0.15 + 40);
+    return `M${sx},${sy} C${sx + bend},${sy} ${sx + bend},${(sy + ty) / 2} ${(sx + tx) / 2 + BOX_W / 2},${(sy + ty) / 2} S${tx - bend},${ty} ${tx},${ty}`;
+  };
+  G.edges.forEach((e, i) => {
+    const a = byId.get(e.s), b = byId.get(e.t);
+    const d = edgePath(a, b);
+    e.el = el("path", { d, class: `edge ${e.kind}` }, gEdges);
+    const hit = el("path", { d, class: "edge-hit" }, gHits);
+    hit.addEventListener("mousemove", ev => showTip(ev, `<code>${esc(a.id)}</code> → <code>${esc(b.id)}</code><br>${esc(KINDS[e.kind][0])} · ${esc(e.semantics || "")}: ${esc(e.why)}`));
+    hit.addEventListener("mouseleave", hideTip);
+    hit.addEventListener("click", () => select(b.id));
+  });
+  G.nodes.forEach(n => {
+    const g = el("g", { class: "node", transform: `translate(${n.x},${n.y})`, tabindex: "0", role: "button",
+                         "aria-label": `${n.short}. ${CATS[n.cat]}` }, gNodes);
+    el("rect", { class: "box", width: BOX_W, height: BOX_H, rx: 4 }, g);
+    el("rect", { class: "tag", width: 5, height: BOX_H, rx: 2, fill: `var(--c-${n.cat})` }, g);
+    const tx = el("text", { x: 11, y: 13 }, g);
+    tx.textContent = n.short;
+    g.addEventListener("click", ev => { ev.stopPropagation(); select(n.id); });
+    g.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); select(n.id); } });
+    g.addEventListener("mousemove", ev => showTip(ev, `<b>${esc(n.short)}</b><br>${esc(n.sub || CATS[n.cat])}`));
+    g.addEventListener("mouseleave", hideTip);
+    n.g = g;
+  });
+
+  // ---- legend, stats, edge filters ------------------------------------------------------
+  document.getElementById("stats").textContent = `${G.nodes.length} variables · ${G.edges.length} connections`;
+  document.getElementById("legend").innerHTML = Object.entries(CATS)
+    .filter(([c]) => c !== "xmv").map(([c, l]) => `<span><b style="background:var(--c-${c})"></b>${l === "Control loop" ? "Control loop / XMV" : l}</span>`).join("");
+  const hidden = new Set();
+  const kindsEl = document.getElementById("edgeKinds");
+  Object.entries(KINDS).forEach(([k, [label, sub]]) => {
+    const n = G.edges.filter(e => e.kind === k).length;
+    const b = document.createElement("span");
+    b.className = "chip"; b.setAttribute("role", "button"); b.tabIndex = 0; b.setAttribute("aria-pressed", "true");
+    b.title = sub;
+    const dash = { physics: "dashed", event: "dotted", module: "dashed" }[k] || "solid";
+    b.innerHTML = `<i style="border-top-style:${dash}"></i>${label} <span style="color:var(--muted)">${n}</span>`;
+    const toggle = () => {
+      hidden.has(k) ? hidden.delete(k) : hidden.add(k);
+      b.setAttribute("aria-pressed", hidden.has(k) ? "false" : "true");
+      G.edges.forEach(e => { if (e.kind === k) e.el.style.display = hidden.has(k) ? "none" : ""; });
+    };
+    b.addEventListener("click", toggle);
+    b.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); } });
+    kindsEl.appendChild(b);
+  });
+
+  // ---- trace ---------------------------------------------------------------------------
+  const reach = (start, dir) => {
+    const seen = new Set([start]), q = [start], edges = new Set();
+    while (q.length) {
+      const id = q.shift();
+      for (const e of (dir === "down" ? out : inc).get(id)) {
+        if (hidden.has(e.kind)) continue;
+        edges.add(e);
+        const nx = dir === "down" ? e.t : e.s;
+        if (!seen.has(nx)) { seen.add(nx); q.push(nx); }
+      }
+    }
+    seen.delete(start);
+    return { nodes: seen, edges };
+  };
+  let current = null;
+  function select(id) {
+    current = id;
+    const up = reach(id, "up"), down = reach(id, "down");
+    G.nodes.forEach(n => {
+      n.g.classList.toggle("sel", n.id === id);
+      n.g.classList.toggle("up", up.nodes.has(n.id) && !down.nodes.has(n.id));
+      n.g.classList.toggle("down", down.nodes.has(n.id));
+      n.g.classList.toggle("dim", n.id !== id && !up.nodes.has(n.id) && !down.nodes.has(n.id));
+    });
+    G.edges.forEach(e => {
+      e.el.classList.remove("hl-up", "hl-down", "dim");
+      if (down.edges.has(e)) e.el.classList.add("hl-down");
+      else if (up.edges.has(e)) e.el.classList.add("hl-up");
+      else e.el.classList.add("dim");
+    });
+    renderDetail(byId.get(id), up, down);
+    document.getElementById("preset").value = [...document.getElementById("preset").options].some(o => o.value === id) ? id : "";
+  }
+  function clearTrace() {
+    current = null;
+    G.nodes.forEach(n => n.g.classList.remove("sel", "up", "down", "dim"));
+    G.edges.forEach(e => e.el.classList.remove("hl-up", "hl-down", "dim"));
+    document.getElementById("preset").value = "";
+    renderIntro();
+  }
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const linkList = (edges, dir) => edges.length ? `<ul class="links">${edges.map(e => {
+    const other = byId.get(dir === "in" ? e.s : e.t);
+    return `<li><a data-go="${esc(other.id)}">${esc(other.short)}</a><span class="why">${esc(KINDS[e.kind][0])} · ${esc(e.why)}</span></li>`;
+  }).join("")}</ul>` : `<p>None.</p>`;
+  function renderDetail(n, up, down) {
+    const ins = inc.get(n.id), outs = out.get(n.id);
+    document.getElementById("detail").innerHTML = `
+      <h2>${esc(n.short)}</h2>
+      <div class="id">${esc(n.id)}</div>
+      <div class="cat"><b style="background:var(--c-${n.cat})"></b>${esc(CATS[n.cat])}${n.sub ? " · " + esc(n.sub) : ""}</div>
+      <p>${esc(n.detail)}</p>
+      <div class="counts"><span class="up"><em>${up.nodes.size}</em> upstream</span><span class="down"><em>${down.nodes.size}</em> downstream</span></div>
+      <h3>Driven by (${ins.length})</h3>${linkList(ins, "in")}
+      <h3>Drives (${outs.length})</h3>${linkList(outs, "out")}`;
+    document.querySelectorAll("#detail [data-go]").forEach(a => a.addEventListener("click", () => { select(a.dataset.go); centerOn(a.dataset.go); }));
+  }
+  function renderIntro() {
+    const n = k => G.edges.filter(e => e.kind === k).length;
+    document.getElementById("detail").innerHTML = `
+      <h2>Reading the graph</h2>
+      <p>Columns run from cause to effect. A benchmark fault writes a cause channel (left). The enterprise modules and the causal relations in <span class="id">configs/coupling.yaml</span> turn it into equipment, utility and storage state. They reach the Tennessee Eastman process only through the violet boundary parameters, which are Fortran variables such as <span class="id">VRNG(10)</span>.</p>
+      <p>Inside TEP, valve positions and boundary conditions determine the measurements. The native loops read measurements and write valves or other loops' setpoints, so control edges point back to the left. Enterprise outputs such as quality tests, production and work orders read the measurements. Work orders close the loop by repairing equipment.</p>
+      <p>Select a node, or pick a starting point under <b>Trace</b>. Upstream connections turn <span class="up">blue</span> and downstream connections turn <span class="down">orange</span>. Hover an edge to see which equation or rule connects the two variables.</p>
+      <h3>Connections by type</h3>
+      <ul class="links">${Object.entries(KINDS).map(([k, [l, s]]) => `<li>${esc(l)}: <b>${n(k)}</b><span class="why">${esc(s)}</span></li>`).join("")}</ul>
+      <h3>Scope</h3>
+      <p>This is a map of the simulator model, not live values. Constant ratings and nominal values are omitted, and alarms are left out except where they trigger work orders.</p>`;
+  }
+
+  // ---- pan & zoom ------------------------------------------------------------------------
+  let view = { x: 0, y: 0, k: 1 };
+  const apply = () => root.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`);
+  const stage = document.getElementById("stage");
+  function fit() {
+    const r = stage.getBoundingClientRect();
+    const k = Math.min(r.width / W, r.height / H) * 0.98;
+    view = { k, x: (r.width - W * k) / 2, y: (r.height - H * k) / 2 };
+    apply();
+  }
+  function zoomAt(f, cx, cy) {
+    const k = Math.min(4, Math.max(0.15, view.k * f));
+    view.x = cx - (cx - view.x) * (k / view.k);
+    view.y = cy - (cy - view.y) * (k / view.k);
+    view.k = k; apply();
+  }
+  function centerOn(id) {
+    const n = byId.get(id), r = stage.getBoundingClientRect();
+    view.k = Math.max(view.k, 0.9);
+    view.x = r.width / 2 - (n.x + BOX_W / 2) * view.k;
+    view.y = r.height / 2 - (n.y + BOX_H / 2) * view.k;
+    apply();
+  }
+  svg.addEventListener("wheel", ev => {
+    ev.preventDefault();
+    const r = svg.getBoundingClientRect();
+    zoomAt(Math.exp(-ev.deltaY * 0.0015), ev.clientX - r.left, ev.clientY - r.top);
+  }, { passive: false });
+  const pointers = new Map();
+  let drag = null, pinch = null, moved = false;
+  svg.addEventListener("pointerdown", ev => {
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    moved = false;
+    if (pointers.size === 1) drag = { x: ev.clientX, y: ev.clientY, vx: view.x, vy: view.y };
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: view.k };
+    }
+  });
+  svg.addEventListener("pointermove", ev => {
+    if (!pointers.has(ev.pointerId)) return;
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pinch && pointers.size === 2) {
+      const [a, b] = [...pointers.values()], r = svg.getBoundingClientRect();
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      zoomAt((pinch.k * d / pinch.d) / view.k, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
+      moved = true;
+    } else if (drag) {
+      const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) { moved = true; svg.classList.add("dragging"); svg.setPointerCapture(ev.pointerId); }
+      view.x = drag.vx + dx; view.y = drag.vy + dy; apply();
+    }
+  });
+  const end = ev => { pointers.delete(ev.pointerId); if (pointers.size < 2) pinch = null; if (!pointers.size) { drag = null; svg.classList.remove("dragging"); } };
+  svg.addEventListener("pointerup", end);
+  svg.addEventListener("pointercancel", end);
+  svg.addEventListener("click", ev => { if (!moved && ev.target === svg) clearTrace(); }, true);
+  document.getElementById("zin").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(1.25, r.width / 2, r.height / 2); };
+  document.getElementById("zout").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(0.8, r.width / 2, r.height / 2); };
+  document.getElementById("zfit").onclick = fit;
+  window.addEventListener("resize", fit);
+
+  // ---- tooltip, search, presets ------------------------------------------------------------
+  const tip = document.getElementById("tip");
+  function showTip(ev, html) {
+    if (drag && moved) return;
+    tip.innerHTML = html; tip.hidden = false;
+    const x = Math.min(ev.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+    tip.style.left = x + "px"; tip.style.top = (ev.clientY + 14) + "px";
+  }
+  function hideTip() { tip.hidden = true; }
+  document.getElementById("q").addEventListener("input", ev => {
+    const q = ev.target.value.trim().toLowerCase();
+    let first = null;
+    G.nodes.forEach(n => {
+      const m = q.length > 1 && (n.id.toLowerCase().includes(q) || n.short.toLowerCase().includes(q) || (n.sub || "").toLowerCase().includes(q));
+      n.g.classList.toggle("match", m);
+      if (m && !first) first = n;
+    });
+    if (first) centerOn(first.id);
+  });
+  document.getElementById("q").addEventListener("keydown", ev => {
+    if (ev.key === "Enter") { const n = G.nodes.find(x => x.g.classList.contains("match")); if (n) select(n.id); }
+  });
+  document.getElementById("preset").addEventListener("change", ev => { if (ev.target.value) { select(ev.target.value); fit(); } else clearTrace(); });
+  document.getElementById("clear").addEventListener("click", clearTrace);
+
+  fit();
+  select("fault.WU-CWP-101A.damage");
+})();
+</script>

@@ -1,0 +1,130 @@
+# Maintainable assets (a subset of the ISA-95 elements in site.yaml) and their condition models.
+#
+# health       0..1 physical condition (1 = as new). health = intrinsic_health - fault damage.
+# status       RUNNING | DEGRADED | STANDBY | STOPPED | FAILED | UNDER_MAINTENANCE
+# efficiency   is NOT computed here: for the pumps, cooling tower, boiler and compressor it is a
+#              causal relation in configs/coupling.yaml; other assets keep the placeholder 1.0.
+# Natural wear only accrues while running. Condition monitoring exposes a vibration
+# indicator (observable) derived from health; health itself is not a plant measurement.
+
+defaults:
+  thresholds: {degraded: 0.75, failed: 0.05}
+  degradation: {rate_per_h: 0.0002, noise_std_per_h: 0.00005}
+  condition_monitoring: {vibration_base_mm_s: 1.8, vibration_gain_mm_s: 10.0, vibration_noise_mm_s: 0.05}
+  changeover_delay_s: 30
+
+assets:
+  # ---------------- cooling water -------------------------------------------------------
+  WU-CWP-101A:
+    asset_type: centrifugal_pump
+    redundancy_group: RG-CW-REACTOR
+    rated: {flow: 1100.0, power_kw: 90.0}      # flow in TEP CW units; circuit design flow = 1000 (VRNG(10))
+    initial: {health: 0.97, state: RUN, run_hours: 12450}
+    degradation: {rate_per_h: 0.0004}
+    maintenance:
+      task: Replace impeller and mechanical seal
+      duration_min: 60
+      skill: mechanical
+      parts: {SP-IMP-101: 1, SP-SEAL-101: 1}
+      restore_health: 0.98
+  WU-CWP-101B:
+    asset_type: centrifugal_pump
+    redundancy_group: RG-CW-REACTOR
+    rated: {flow: 1100.0, power_kw: 90.0}
+    initial: {health: 0.95, state: STANDBY, run_hours: 9120}
+    maintenance:
+      task: Replace impeller and mechanical seal
+      duration_min: 60
+      skill: mechanical
+      parts: {SP-IMP-101: 1, SP-SEAL-101: 1}
+      restore_health: 0.98
+  WU-CWP-201A:
+    asset_type: centrifugal_pump
+    redundancy_group: RG-CW-CONDENSER
+    rated: {flow: 1320.0, power_kw: 110.0}     # circuit design flow = 1200 (VRNG(11))
+    initial: {health: 0.96, state: RUN, run_hours: 15010}
+    maintenance:
+      task: Replace impeller and mechanical seal
+      duration_min: 75
+      skill: mechanical
+      parts: {SP-IMP-201: 1, SP-SEAL-101: 1}
+      restore_health: 0.98
+  WU-CWP-201B:
+    asset_type: centrifugal_pump
+    redundancy_group: RG-CW-CONDENSER
+    rated: {flow: 1320.0, power_kw: 110.0}
+    initial: {health: 0.97, state: STANDBY, run_hours: 8800}
+    maintenance:
+      task: Replace impeller and mechanical seal
+      duration_min: 75
+      skill: mechanical
+      parts: {SP-IMP-201: 1, SP-SEAL-101: 1}
+      restore_health: 0.98
+  WU-CT-101:
+    asset_type: cooling_tower
+    rated: {fan_power_kw: 45.0, max_supply_temperature_rise_c: 12.0}
+    initial: {health: 0.95, state: RUN, run_hours: 30100}
+    degradation: {rate_per_h: 0.0001}
+    maintenance:
+      task: Clean fill media and service fan gearbox
+      duration_min: 120
+      skill: mechanical
+      parts: {SP-FILL-101: 1}
+      restore_health: 0.99
+
+  # ---------------- steam & power -----------------------------------------------------
+  WU-BLR-301:
+    asset_type: boiler
+    rated: {steam_kg_h: 1500.0, aux_power_kw: 25.0}
+    initial: {health: 0.94, state: RUN, run_hours: 22000}
+    maintenance:
+      task: Burner service and tube inspection
+      duration_min: 180
+      skill: mechanical
+      parts: {SP-BURNER-301: 1}
+      restore_health: 0.97
+  WU-TX-401:
+    asset_type: transformer
+    rated: {capacity_kw: 2400.0}
+    initial: {health: 0.98, state: RUN, run_hours: 60000}
+    degradation: {rate_per_h: 0.00002}
+    maintenance:
+      task: Transformer inspection and oil treatment
+      duration_min: 240
+      skill: electrical
+      parts: {}
+      restore_health: 0.99
+  WU-MCC-401:
+    asset_type: motor_control_center
+    rated: {}
+    initial: {health: 0.97, state: RUN, run_hours: 60000}
+    degradation: {rate_per_h: 0.00002}
+    maintenance:
+      task: MCC bucket replacement
+      duration_min: 90
+      skill: electrical
+      parts: {SP-MCC-BKT: 1}
+      restore_health: 0.99
+
+  # ---------------- TEP process machinery -----------------------------------------------
+  EM-COMPRESSOR:
+    asset_type: centrifugal_compressor
+    rated: {capacity_margin: 1.10, motor_power_kw: 400.0}
+    initial: {health: 0.96, state: RUN, run_hours: 18000}
+    degradation: {rate_per_h: 0.0002}
+    maintenance:
+      task: Compressor seal and bearing overhaul
+      duration_min: 240
+      skill: mechanical
+      parts: {SP-SEAL-K101: 1, SP-BRG-K101: 2}
+      restore_health: 0.98
+  EM-AGITATOR:
+    asset_type: agitator
+    rated: {motor_power_kw: 55.0}
+    initial: {health: 0.97, state: RUN, run_hours: 18000}
+    maintenance:
+      task: Agitator gearbox service
+      duration_min: 120
+      skill: mechanical
+      parts: {SP-BRG-M101: 1}
+      restore_health: 0.98

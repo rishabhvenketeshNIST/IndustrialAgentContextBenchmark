@@ -1,0 +1,48 @@
+# Utility services supplied to the TEP process.
+# Numeric state (available_capacity, flow, temperature, pressure, health ...) is computed by
+# the causal relations in configs/coupling.yaml. The utilities module owns the derived
+# status/availability/utilization classification and utility events.
+
+status_thresholds:
+  constrained_utilization: 0.97     # >= -> CONSTRAINED (supply at its limit)
+  degraded_availability: 0.999      # capacity_fraction below -> DEGRADED
+  degraded_health: 0.75
+  unavailable_availability: 0.02
+
+services:
+  UT-CW-REACTOR:
+    name: Reactor Cooling Water Service
+    utility_type: cooling_water
+    supplied_by: WC-CW
+    serves: [EM-RX-COOLING]
+    capacity: 1000.0          # design flow at 100% valve = native VRNG(10)
+    unit: TEP CW flow units
+    nominal: {supply_temperature: 35.0, pressure: 4.0}
+    units: {temperature: degC, return_temperature: degC, pressure: barg, flow: TEP CW flow units}
+  UT-CW-CONDENSER:
+    name: Condenser Cooling Water Service
+    utility_type: cooling_water
+    supplied_by: WC-CW
+    serves: [EM-CONDENSER]
+    capacity: 1200.0          # native VRNG(11)
+    unit: TEP CW flow units
+    nominal: {supply_temperature: 40.0, pressure: 4.0}
+    units: {temperature: degC, return_temperature: degC, pressure: barg, flow: TEP CW flow units}
+  UT-STEAM:
+    name: Low-Pressure Steam Service
+    utility_type: steam
+    supplied_by: WC-STEAM
+    serves: [EM-STRIPPER-STEAM]
+    capacity: 1500.0          # boiler rating
+    unit: kg/h
+    nominal: {pressure: 10.0, other_demand_kg_h: 700.0, stripper_design_kg_h: 500.0}
+    units: {temperature: degC, pressure: barg, flow: kg/h}
+  UT-POWER:
+    name: Electrical Power Service
+    utility_type: electrical_power
+    supplied_by: WC-POWER
+    serves: [EM-COMPRESSOR, EM-AGITATOR, WC-CW, WC-STEAM]
+    capacity: 2400.0          # transformer rating
+    unit: kW
+    nominal: {voltage: 6.6, site_other_demand_kw: 900.0, sheddable_fraction: 0.6}
+    units: {voltage: kV, flow: kW}

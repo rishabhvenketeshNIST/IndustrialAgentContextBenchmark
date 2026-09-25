@@ -1,0 +1,21 @@
+# Maintenance organisation and policies.
+# Shift hours are local time-of-day of the simulated clock (simulation_start in the scenario).
+
+technicians:
+  - {id: TECH-01, name: A. Rivera,  skills: [mechanical],                  shift: {start_h: 6,  end_h: 18}}
+  - {id: TECH-02, name: J. Chen,    skills: [mechanical, electrical],      shift: {start_h: 6,  end_h: 18}}
+  - {id: TECH-03, name: M. Okafor,  skills: [electrical, instrumentation], shift: {start_h: 6,  end_h: 18}}
+  - {id: TECH-04, name: S. Patel,   skills: [mechanical, instrumentation], shift: {start_h: 18, end_h: 6}}
+
+# Dispatch/response time from request to start, by priority (1 = emergency).
+response_time_s: {1: 600, 2: 1500, 3: 3600, 4: 14400}
+duration_jitter_fraction: 0.10
+
+requests:
+  on_equipment_failure: {kind: corrective, priority: 1}
+  # Alarms whose definition carries 'maintenance: corrective|inspection' raise requests (configs/alarms.yaml)
+
+inspection:
+  duration_min: 20
+  skill: mechanical
+  finding_thresholds: {efficiency: 0.85, health: 0.75}   # assets below either get a corrective work order

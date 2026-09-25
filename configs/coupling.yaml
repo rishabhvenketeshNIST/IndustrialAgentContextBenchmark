@@ -1,0 +1,478 @@
+# Causal / coupling model. Evaluated every simulated second in dependency order.
+#
+# Reference syntax (inputs and outputs):
+#   <ENTITY-ID>.<property>        canonical-state entity property
+#   process.XMEAS(n) | process.XMV(n)   transmitted process values (last step)
+#   tep.boundary.<name>           current TEP boundary parameter (simulator/tep/boundary.py)
+#   tep.nominal.<name>            its TEINIT value
+#   fault.<TARGET>.<channel>      combined fault *cause* contribution (input only)
+# Outputs to tep.boundary.* are the ONLY way the enterprise layer influences TEP physics.
+# 'for_each' expands a relation for several entities, substituting {id}.
+# Expression language: + - * / ** min max abs clip interp ramp step safe_div sqrt exp log.
+
+relations:
+
+  # ------------------------------------------------------------------ equipment performance
+  - id: CR-PUMP-EFFICIENCY
+    category: equipment_performance
+    description: Pump hydraulic efficiency follows mechanical health; impeller wear adds an efficiency loss.
+    for_each: [WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B]
+    inputs: {h: "{id}.health", loss: "fault.{id}.efficiency_loss"}
+    output: "{id}.efficiency"
+    expression: "clip(h, 0, 1) * (1 - loss)"
+
+  - id: CR-MCC-SUPPLY
+    category: power_distribution
+    description: Motors fed from MCC-401 receive the process share of available electrical power.
+    inputs: {frac: UT-POWER.process_supply_fraction, run: WU-MCC-401.is_running}
+    output: WU-MCC-401.supply_fraction
+    expression: "frac * run"
+
+  - id: CR-PUMP-FLOW
+    category: equipment_performance
+    description: Deliverable pump flow = rated flow x efficiency x running x electrical supply.
+    for_each: [WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B]
+    inputs: {rated: "{id}.rated_flow", eff: "{id}.efficiency", run: "{id}.is_running", pf: WU-MCC-401.supply_fraction}
+    output: "{id}.available_flow"
+    expression: "rated * eff * run * pf"
+
+  - id: CR-CT-PERFORMANCE
+    category: equipment_performance
+    description: Cooling tower thermal performance from health, fan state and fouling faults.
+    inputs: {h: WU-CT-101.health, run: WU-CT-101.is_running, pf: WU-MCC-401.supply_fraction,
+             thermal: fault.WU-CT-101.thermal_degradation}
+    output: WU-CT-101.efficiency
+    expression: "clip(h, 0, 1) * run * pf * (1 - thermal)"
+
+  - id: CR-CT-TEMPERATURE-RISE
+    category: equipment_performance
+    description: Supply temperature rises once tower performance drops below its 0.9 design margin.
+    inputs: {perf: WU-CT-101.efficiency, rise_max: WU-CT-101.rated_max_supply_temperature_rise_c}
+    output: WU-CT-101.supply_temperature_rise
+    expression: "rise_max * clip((0.9 - perf) / 0.9, 0, 1)"
+
+  - id: CR-BOILER-EFFICIENCY
+    category: equipment_performance
+    description: Boiler efficiency follows health; burner faults add losses.
+    inputs: {h: WU-BLR-301.health, loss: fault.WU-BLR-301.efficiency_loss}
+    output: WU-BLR-301.efficiency
+    expression: "clip(h, 0, 1) * (1 - loss)"
+
+  - id: CR-BOILER-STEAM
+    category: equipment_performance
+    description: Steam the boiler can raise.
+    inputs: {rated: WU-BLR-301.rated_steam_kg_h, eff: WU-BLR-301.efficiency, run: WU-BLR-301.is_running,
+             pf: WU-MCC-401.supply_fraction}
+    output: WU-BLR-301.available_steam
+    expression: "rated * eff * run * pf"
+
+  - id: CR-TX-CAPACITY
+    category: equipment_performance
+    description: Transformer deliverable power.
+    inputs: {rated: WU-TX-401.rated_capacity_kw, run: WU-TX-401.is_running}
+    output: WU-TX-401.available_kw
+    expression: "rated * run"
+
+  - id: CR-COMPRESSOR-EFFICIENCY
+    category: equipment_performance
+    description: Compressor efficiency follows health; internal wear adds losses.
+    inputs: {h: EM-COMPRESSOR.health, loss: fault.EM-COMPRESSOR.efficiency_loss}
+    output: EM-COMPRESSOR.efficiency
+    expression: "clip(h, 0, 1) * (1 - loss)"
+
+  - id: CR-COMPRESSOR-CAPABILITY
+    category: equipment_performance
+    description: Fraction of design compressor capacity available (10% design margin), needs power.
+    inputs: {eff: EM-COMPRESSOR.efficiency, margin: EM-COMPRESSOR.rated_capacity_margin,
+             run: EM-COMPRESSOR.is_running, pf: UT-POWER.process_supply_fraction}
+    output: EM-COMPRESSOR.capability
+    expression: "clip(eff * margin, 0, 1) * run * pf"
+
+  # ------------------------------------------------------------------ cooling water
+  - id: CR-CW-RX-CAPACITY
+    category: utility_supply
+    description: Reactor CW circuit capacity = sum of deliverable pump flows, less utility-level losses.
+    inputs: {a: WU-CWP-101A.available_flow, b: WU-CWP-101B.available_flow, loss: fault.UT-CW-REACTOR.capacity_loss}
+    output: UT-CW-REACTOR.available_capacity
+    expression: "(a + b) * (1 - loss)"
+
+  - id: CR-CW-RX-FRACTION
+    category: utility_supply
+    description: Fraction of circuit design flow that can be delivered.
+    inputs: {avail: UT-CW-REACTOR.available_capacity, cap: UT-CW-REACTOR.capacity}
+    output: UT-CW-REACTOR.capacity_fraction
+    expression: "clip(safe_div(avail, cap), 0, 1)"
+
+  - id: CR-CW-RX-TEP
+    category: tep_boundary
+    description: >-
+      Reactor CW hydraulic capacity -> TEP VRNG(10). FWR = VPOS(10)*VRNG(10)/100 in TEFUNC, so the
+      reactor cooling duty at a given valve position falls and the native TC-RCW/TC-RX cascade responds.
+    inputs: {nominal: tep.nominal.reactor_cw_max_flow, frac: UT-CW-REACTOR.capacity_fraction}
+    output: tep.boundary.reactor_cw_max_flow
+    expression: "nominal * frac"
+
+  - id: CR-CW-COND-CAPACITY
+    category: utility_supply
+    description: Condenser CW circuit capacity.
+    inputs: {a: WU-CWP-201A.available_flow, b: WU-CWP-201B.available_flow, loss: fault.UT-CW-CONDENSER.capacity_loss}
+    output: UT-CW-CONDENSER.available_capacity
+    expression: "(a + b) * (1 - loss)"
+
+  - id: CR-CW-COND-FRACTION
+    category: utility_supply
+    inputs: {avail: UT-CW-CONDENSER.available_capacity, cap: UT-CW-CONDENSER.capacity}
+    output: UT-CW-CONDENSER.capacity_fraction
+    expression: "clip(safe_div(avail, cap), 0, 1)"
+
+  - id: CR-CW-COND-TEP
+    category: tep_boundary
+    description: Condenser CW hydraulic capacity -> TEP VRNG(11) (FWS = VPOS(11)*VRNG(11)/100).
+    inputs: {nominal: tep.nominal.condenser_cw_max_flow, frac: UT-CW-CONDENSER.capacity_fraction}
+    output: tep.boundary.condenser_cw_max_flow
+    expression: "nominal * frac"
+
+  - id: CR-CW-RX-SUPPLY-T
+    category: utility_supply
+    description: Reactor CW supply temperature = design supply temperature + cooling tower rise.
+    inputs: {base: tep.nominal.reactor_cw_inlet_temperature_mean, rise: WU-CT-101.supply_temperature_rise}
+    output: UT-CW-REACTOR.temperature
+    expression: "base + rise"
+
+  - id: CR-CW-RX-SUPPLY-T-TEP
+    category: tep_boundary
+    description: >-
+      Cooling tower supply temperature -> mean of the TEP reactor CW inlet random walk SZERO(5)
+      (TCWR = TESUB8(5,TIME) + IDV(4)*5). Takes effect at the next walk knot (0.1-0.4 h).
+    inputs: {t: UT-CW-REACTOR.temperature}
+    output: tep.boundary.reactor_cw_inlet_temperature_mean
+    expression: "t"
+
+  - id: CR-CW-COND-SUPPLY-T
+    category: utility_supply
+    inputs: {base: tep.nominal.condenser_cw_inlet_temperature_mean, rise: WU-CT-101.supply_temperature_rise}
+    output: UT-CW-CONDENSER.temperature
+    expression: "base + rise"
+
+  - id: CR-CW-COND-SUPPLY-T-TEP
+    category: tep_boundary
+    description: Cooling tower supply temperature -> SZERO(6) (TCWS walk mean).
+    inputs: {t: UT-CW-CONDENSER.temperature}
+    output: tep.boundary.condenser_cw_inlet_temperature_mean
+    expression: "t"
+
+  - id: CR-CW-RX-FLOW
+    category: utility_observation
+    description: Delivered reactor CW flow (header flow meter) = valve position x hydraulic capacity.
+    inputs: {xmv: process.XMV(10), vr: tep.boundary.reactor_cw_max_flow}
+    output: UT-CW-REACTOR.flow
+    expression: "xmv / 100 * vr"
+
+  - id: CR-CW-RX-DEMAND
+    category: utility_observation
+    inputs: {flow: UT-CW-REACTOR.flow}
+    output: UT-CW-REACTOR.demand
+    expression: "flow"
+
+  - id: CR-CW-RX-UTIL
+    category: utility_observation
+    description: Utilization of the deliverable reactor CW supply.
+    inputs: {flow: UT-CW-REACTOR.flow, avail: UT-CW-REACTOR.available_capacity, cap: UT-CW-REACTOR.capacity}
+    output: UT-CW-REACTOR.utilization
+    expression: "clip(safe_div(flow, min(avail, cap), 1), 0, 1.5)"
+
+  - id: CR-CW-RX-RETURN-T
+    category: utility_observation
+    inputs: {t: process.XMEAS(21)}
+    output: UT-CW-REACTOR.return_temperature
+    expression: "t"
+
+  - id: CR-CW-RX-PRESSURE
+    category: utility_observation
+    description: Header pressure follows the pump curve (approximately quadratic in deliverable flow).
+    inputs: {avail: UT-CW-REACTOR.available_capacity, cap: UT-CW-REACTOR.capacity, p: UT-CW-REACTOR.nominal_pressure}
+    output: UT-CW-REACTOR.pressure
+    expression: "p * clip(safe_div(avail, 1.1 * cap), 0, 1.2) ** 2"
+
+  - id: CR-CW-RX-HEALTH
+    category: utility_observation
+    inputs: {ha: WU-CWP-101A.health, ra: WU-CWP-101A.is_running, hb: WU-CWP-101B.health,
+             rb: WU-CWP-101B.is_running, ct: WU-CT-101.health}
+    output: UT-CW-REACTOR.health
+    expression: "min(max(ha * ra, hb * rb), ct)"
+
+  - id: CR-CW-COND-FLOW
+    category: utility_observation
+    inputs: {xmv: process.XMV(11), vr: tep.boundary.condenser_cw_max_flow}
+    output: UT-CW-CONDENSER.flow
+    expression: "xmv / 100 * vr"
+
+  - id: CR-CW-COND-DEMAND
+    category: utility_observation
+    inputs: {flow: UT-CW-CONDENSER.flow}
+    output: UT-CW-CONDENSER.demand
+    expression: "flow"
+
+  - id: CR-CW-COND-UTIL
+    category: utility_observation
+    inputs: {flow: UT-CW-CONDENSER.flow, avail: UT-CW-CONDENSER.available_capacity, cap: UT-CW-CONDENSER.capacity}
+    output: UT-CW-CONDENSER.utilization
+    expression: "clip(safe_div(flow, min(avail, cap), 1), 0, 1.5)"
+
+  - id: CR-CW-COND-RETURN-T
+    category: utility_observation
+    inputs: {t: process.XMEAS(22)}
+    output: UT-CW-CONDENSER.return_temperature
+    expression: "t"
+
+  - id: CR-CW-COND-PRESSURE
+    category: utility_observation
+    inputs: {avail: UT-CW-CONDENSER.available_capacity, cap: UT-CW-CONDENSER.capacity, p: UT-CW-CONDENSER.nominal_pressure}
+    output: UT-CW-CONDENSER.pressure
+    expression: "p * clip(safe_div(avail, 1.1 * cap), 0, 1.2) ** 2"
+
+  - id: CR-CW-COND-HEALTH
+    category: utility_observation
+    inputs: {ha: WU-CWP-201A.health, ra: WU-CWP-201A.is_running, hb: WU-CWP-201B.health,
+             rb: WU-CWP-201B.is_running, ct: WU-CT-101.health}
+    output: UT-CW-CONDENSER.health
+    expression: "min(max(ha * ra, hb * rb), ct)"
+
+  # ------------------------------------------------------------------ steam
+  - id: CR-STEAM-CAPACITY
+    category: utility_supply
+    inputs: {boiler: WU-BLR-301.available_steam, loss: fault.UT-STEAM.capacity_loss}
+    output: UT-STEAM.available_capacity
+    expression: "boiler * (1 - loss)"
+
+  - id: CR-STEAM-FOR-PROCESS
+    category: utility_supply
+    description: Steam left for the stripper after other site consumers.
+    inputs: {avail: UT-STEAM.available_capacity, other: UT-STEAM.nominal_other_demand_kg_h}
+    output: UT-STEAM.available_for_process
+    expression: "max(avail - other, 0)"
+
+  - id: CR-STEAM-FRACTION
+    category: utility_supply
+    inputs: {avail: UT-STEAM.available_for_process, design: UT-STEAM.nominal_stripper_design_kg_h}
+    output: UT-STEAM.capacity_fraction
+    expression: "clip(safe_div(avail, design), 0, 1)"
+
+  - id: CR-STEAM-TEP
+    category: tep_boundary
+    description: >-
+      Steam supply -> TEP VRNG(9). UAC = VPOS(9)*VRNG(9)*(1+walk)/100 and QUC = UAC*(100-TCC): the stripper
+      heat input deliverable at a given steam valve position scales with the supply fraction.
+    inputs: {nominal: tep.nominal.stripper_steam_valve_range, frac: UT-STEAM.capacity_fraction}
+    output: tep.boundary.stripper_steam_valve_range
+    expression: "nominal * frac"
+
+  - id: CR-STEAM-FLOW
+    category: utility_observation
+    inputs: {stripper: process.XMEAS(19), other: UT-STEAM.nominal_other_demand_kg_h}
+    output: UT-STEAM.flow
+    expression: "stripper + other"
+
+  - id: CR-STEAM-DEMAND
+    category: utility_observation
+    inputs: {flow: UT-STEAM.flow}
+    output: UT-STEAM.demand
+    expression: "flow"
+
+  - id: CR-STEAM-UTIL
+    category: utility_observation
+    inputs: {flow: UT-STEAM.flow, avail: UT-STEAM.available_capacity}
+    output: UT-STEAM.utilization
+    expression: "clip(safe_div(flow, avail, 1.5), 0, 1.5)"
+
+  - id: CR-STEAM-PRESSURE
+    category: utility_observation
+    description: Header pressure collapses when steam demand exceeds boiler output.
+    inputs: {avail: UT-STEAM.available_capacity, flow: UT-STEAM.flow, p: UT-STEAM.nominal_pressure}
+    output: UT-STEAM.pressure
+    expression: "p * clip(safe_div(avail, flow, 1), 0, 1)"
+
+  - id: CR-STEAM-TEMPERATURE
+    category: utility_observation
+    description: Saturation temperature at header pressure (steam tables, barg -> degC).
+    inputs: {p: UT-STEAM.pressure}
+    output: UT-STEAM.temperature
+    expression: "interp(p, [0, 1, 2, 4, 6, 8, 10, 12], [100.0, 120.2, 133.5, 151.8, 165.0, 175.4, 184.1, 191.6])"
+
+  - id: CR-STEAM-HEALTH
+    category: utility_observation
+    inputs: {h: WU-BLR-301.health, run: WU-BLR-301.is_running}
+    output: UT-STEAM.health
+    expression: "h * run"
+
+  # ------------------------------------------------------------------ electrical power
+  - id: CR-POWER-CAPACITY
+    category: utility_supply
+    inputs: {tx: WU-TX-401.available_kw, loss: fault.UT-POWER.capacity_loss}
+    output: UT-POWER.available_capacity
+    expression: "tx * (1 - loss)"
+
+  - id: CR-POWER-PROCESS-DEMAND
+    category: utility_observation
+    description: Process electrical load - compressor (XMEAS 20), agitator (cube of TEP speed AGSP), motors.
+    inputs: {comp: process.XMEAS(20), agit_kw: EM-AGITATOR.rated_motor_power_kw, speed: process.XMV(12),
+             pa: WU-CWP-101A.is_running, pb: WU-CWP-101B.is_running, pc: WU-CWP-201A.is_running,
+             pd: WU-CWP-201B.is_running, ka: WU-CWP-101A.rated_power_kw, kc: WU-CWP-201A.rated_power_kw,
+             fan: WU-CT-101.rated_fan_power_kw, ct: WU-CT-101.is_running,
+             blr: WU-BLR-301.rated_aux_power_kw, br: WU-BLR-301.is_running}
+    output: UT-POWER.process_demand
+    expression: "comp + agit_kw * ((speed + 150) / 200) ** 3 + ka * (pa + pb) + kc * (pc + pd) + fan * ct + blr * br"
+
+  - id: CR-POWER-DEMAND
+    category: utility_observation
+    inputs: {proc: UT-POWER.process_demand, other: UT-POWER.nominal_site_other_demand_kw}
+    output: UT-POWER.demand
+    expression: "proc + other"
+
+  - id: CR-POWER-SHED
+    category: utility_supply
+    description: Sheddable site load is shed first when demand exceeds supply.
+    inputs: {avail: UT-POWER.available_capacity, demand: UT-POWER.demand,
+             other: UT-POWER.nominal_site_other_demand_kw, shed_frac: UT-POWER.nominal_sheddable_fraction}
+    output: UT-POWER.shed_load
+    expression: "clip(demand - avail, 0, other * shed_frac)"
+
+  - id: CR-POWER-PROCESS-FRACTION
+    category: utility_supply
+    description: Share of process load that can be served after shedding and serving essential site load.
+    inputs: {avail: UT-POWER.available_capacity, proc: UT-POWER.process_demand,
+             other: UT-POWER.nominal_site_other_demand_kw, shed_frac: UT-POWER.nominal_sheddable_fraction}
+    output: UT-POWER.process_supply_fraction
+    expression: "clip(safe_div(avail - other * (1 - shed_frac), proc, 1), 0, 1)"
+
+  - id: CR-POWER-FLOW
+    category: utility_observation
+    inputs: {demand: UT-POWER.demand, shed: UT-POWER.shed_load, avail: UT-POWER.available_capacity}
+    output: UT-POWER.flow
+    expression: "min(demand - shed, avail)"
+
+  - id: CR-POWER-UTIL
+    category: utility_observation
+    inputs: {flow: UT-POWER.flow, avail: UT-POWER.available_capacity}
+    output: UT-POWER.utilization
+    expression: "clip(safe_div(flow, avail, 1.5), 0, 1.5)"
+
+  - id: CR-POWER-VOLTAGE
+    category: utility_observation
+    description: Bus voltage sags when the supply is overloaded.
+    inputs: {v: UT-POWER.nominal_voltage, demand: UT-POWER.demand, avail: UT-POWER.available_capacity}
+    output: UT-POWER.voltage
+    expression: "v * clip(1 - 0.1 * max(safe_div(demand, avail, 2) - 1, 0), 0, 1)"
+
+  - id: CR-POWER-HEALTH
+    category: utility_observation
+    inputs: {tx: WU-TX-401.health, mcc: WU-MCC-401.health}
+    output: UT-POWER.health
+    expression: "min(tx, mcc)"
+
+  # ------------------------------------------------------------------ compressor -> TEP
+  - id: CR-COMPRESSOR-TEP
+    category: tep_boundary
+    description: >-
+      Compressor capability -> TEP CPFLMX (FLMS = CPFLMX + FLCOEF*(1-PR**3), FLCOEF = CPFLMX/1.197).
+    inputs: {nominal: tep.nominal.compressor_max_flow, cap: EM-COMPRESSOR.capability}
+    output: tep.boundary.compressor_max_flow
+    expression: "nominal * cap"
+
+  # ------------------------------------------------------------------ raw materials -> TEP
+  - id: CR-FEED-A-SUPPLY
+    category: tep_boundary
+    description: A gas storage availability -> hydraulic capacity of stream 1 (VRNG(3)).
+    inputs: {nominal: tep.nominal.a_feed_max_flow, avail: SU-SPH-103.supply_availability}
+    output: tep.boundary.a_feed_max_flow
+    expression: "nominal * avail"
+  - id: CR-FEED-D-SUPPLY
+    category: tep_boundary
+    description: D tank availability -> hydraulic capacity of stream 2 (VRNG(1)).
+    inputs: {nominal: tep.nominal.d_feed_max_flow, avail: SU-TK-101.supply_availability}
+    output: tep.boundary.d_feed_max_flow
+    expression: "nominal * avail"
+  - id: CR-FEED-E-SUPPLY
+    category: tep_boundary
+    description: E tank availability -> hydraulic capacity of stream 3 (VRNG(2)).
+    inputs: {nominal: tep.nominal.e_feed_max_flow, avail: SU-TK-102.supply_availability}
+    output: tep.boundary.e_feed_max_flow
+    expression: "nominal * avail"
+  - id: CR-FEED-AC-SUPPLY
+    category: tep_boundary
+    description: A/C gas storage availability -> hydraulic capacity of stream 4 (VRNG(4)).
+    inputs: {nominal: tep.nominal.ac_feed_max_flow, avail: SU-SPH-104.supply_availability}
+    output: tep.boundary.ac_feed_max_flow
+    expression: "nominal * avail"
+
+  - id: CR-FEED-D-LOT
+    category: tep_boundary
+    description: B impurity of the D lot being consumed -> XST(2,1) of stream 2.
+    inputs: {nominal: tep.nominal.d_feed_b_impurity, dev: SU-TK-101.feed_impurity_deviation}
+    output: tep.boundary.d_feed_b_impurity
+    expression: "nominal + dev"
+  - id: CR-FEED-E-LOT
+    category: tep_boundary
+    description: F impurity of the E lot being consumed -> XST(6,2) of stream 3.
+    inputs: {nominal: tep.nominal.e_feed_f_impurity, dev: SU-TK-102.feed_impurity_deviation}
+    output: tep.boundary.e_feed_f_impurity
+    expression: "nominal + dev"
+  - id: CR-FEED-A-LOT
+    category: tep_boundary
+    description: B impurity of the A lot being consumed -> XST(2,3) of stream 1.
+    inputs: {nominal: tep.nominal.a_feed_b_impurity, dev: SU-SPH-103.feed_impurity_deviation}
+    output: tep.boundary.a_feed_b_impurity
+    expression: "nominal + dev"
+  - id: CR-FEED-AC-LOT-A
+    category: tep_boundary
+    description: A fraction of the A/C lot being consumed -> SZERO(1), mean of the stream-4 A composition walk.
+    inputs: {nominal: tep.nominal.stream4_a_fraction_mean, dev: SU-SPH-104.feed_a_fraction_deviation}
+    output: tep.boundary.stream4_a_fraction_mean
+    expression: "nominal + dev"
+  - id: CR-FEED-AC-LOT-B
+    category: tep_boundary
+    description: B (inert) fraction of the A/C lot being consumed -> SZERO(2).
+    inputs: {nominal: tep.nominal.stream4_b_fraction_mean, dev: SU-SPH-104.feed_b_fraction_deviation}
+    output: tep.boundary.stream4_b_fraction_mean
+    expression: "nominal + dev"
+
+# Lot relations add the lot's deviation from its certificate nominal to the TEINIT value, so a
+# nominal lot reproduces the native boundary bit-for-bit (TEINIT assigns some of them as REAL literals).
+
+# Documented physical consequences inside TEP of each boundary parameter. Used for causal
+# tracing (which measurements/equipment inherit an upstream cause) and for the UI causal view.
+# These are NOT evaluated - the TEP model computes them.
+process_influences:
+  reactor_cw_max_flow:
+    measurements: ["XMEAS(21)", "XMEAS(9)", "XMEAS(7)", "XMEAS(40)", "XMEAS(41)", "XMEAS(38)"]
+    manipulated: ["XMV(10)"]
+    equipment: [EM-RX-COOLING, EM-REACTOR, CM-AT-PRODUCT, CM-TIC-RCW, CM-TIC-RX, CM-TV-10]
+  condenser_cw_max_flow:
+    measurements: ["XMEAS(22)", "XMEAS(11)", "XMEAS(13)", "XMEAS(17)"]
+    manipulated: ["XMV(11)"]
+    equipment: [EM-CONDENSER, EM-SEPARATOR, EM-STRIPPER, CM-FIC-PRD, CM-CV-11]
+  reactor_cw_inlet_temperature_mean:
+    measurements: ["XMEAS(21)", "XMEAS(9)"]
+    manipulated: ["XMV(10)"]
+    equipment: [EM-RX-COOLING, EM-REACTOR]
+  condenser_cw_inlet_temperature_mean:
+    measurements: ["XMEAS(22)", "XMEAS(11)"]
+    manipulated: ["XMV(11)"]
+    equipment: [EM-CONDENSER, EM-SEPARATOR]
+  stripper_steam_valve_range:
+    measurements: ["XMEAS(19)", "XMEAS(18)", "XMEAS(38)"]
+    manipulated: ["XMV(9)"]
+    equipment: [EM-STRIPPER-STEAM, EM-STRIPPER, CM-AT-PRODUCT]
+  compressor_max_flow:
+    measurements: ["XMEAS(5)", "XMEAS(20)", "XMEAS(7)", "XMEAS(16)"]
+    manipulated: ["XMV(5)"]
+    equipment: [EM-COMPRESSOR, EM-REACTOR]
+  a_feed_max_flow: {measurements: ["XMEAS(1)", "XMEAS(23)"], manipulated: ["XMV(3)"], equipment: [EM-FEED-A]}
+  d_feed_max_flow: {measurements: ["XMEAS(2)", "XMEAS(26)"], manipulated: ["XMV(1)"], equipment: [EM-FEED-D]}
+  e_feed_max_flow: {measurements: ["XMEAS(3)", "XMEAS(27)"], manipulated: ["XMV(2)"], equipment: [EM-FEED-E]}
+  ac_feed_max_flow: {measurements: ["XMEAS(4)", "XMEAS(7)"], manipulated: ["XMV(4)"], equipment: [EM-FEED-AC, EM-REACTOR]}
+  d_feed_b_impurity: {measurements: ["XMEAS(24)", "XMEAS(30)"], manipulated: ["XMV(6)"], equipment: [EM-PURGE]}
+  e_feed_f_impurity: {measurements: ["XMEAS(28)", "XMEAS(34)", "XMEAS(39)"], manipulated: [], equipment: [EM-REACTOR, CM-AT-PRODUCT]}
+  a_feed_b_impurity: {measurements: ["XMEAS(24)", "XMEAS(30)"], manipulated: ["XMV(6)"], equipment: [EM-PURGE]}
+  stream4_a_fraction_mean: {measurements: ["XMEAS(23)", "XMEAS(25)"], manipulated: ["XMV(3)", "XMV(4)"], equipment: [EM-FEED-AC, EM-REACTOR]}
+  stream4_b_fraction_mean: {measurements: ["XMEAS(24)", "XMEAS(30)", "XMEAS(10)"], manipulated: ["XMV(6)"], equipment: [EM-PURGE, EM-FEED-AC]}

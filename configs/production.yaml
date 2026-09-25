@@ -1,0 +1,37 @@
+# Production model of the TEP line.
+#
+# Product mass rate is metered as stripper underflow (XMEAS 17, m3/h) x product density.
+# The density is derived from the Downs & Vogel Mode 1 base case: 14,076 kg/h (7,038 G + 7,038 H)
+# at 22.949 m3/h -> 613.4 kg/m3.
+# The bill of materials (kg feed per kg product) is derived from the base-case feed rates
+# (XMEAS 1-4 with the conversions in configs/materials.yaml) divided by 14,076 kg/h.
+
+line:
+  id: PU-STRIPPER            # equipment producing finished product
+  product_flow_measurement: XMEAS(17)
+  product_density_kg_m3: 613.4
+  nominal_rate_kg_h: 14076.0
+  reduced_rate_fraction: 0.90   # below this fraction of nominal -> REDUCED_RATE
+  down_rate_fraction: 0.05      # below this -> DOWN
+  rundown_tank: SU-TK-501
+
+products:
+  PROD-GH-M1:
+    name: G/H Product Mixture, Mode 1 (50/50 by mass)
+    material: MAT-GH
+    unit: kg
+    bill_of_materials:          # kg per kg product
+      MAT-A: 0.00159
+      MAT-D: 0.2603
+      MAT-E: 0.3204
+      MAT-AC: 0.4561
+
+lots:
+  duration_s: 3600             # one production lot per hour of operation
+  prefix: PL
+  qc_decision_delay_s: 900     # lab review after the lot closes (last analyzer result arrives with 0.25 h dead time)
+
+scheduling:
+  single_line: true            # one order runs at a time on the TEP line
+  auto_release: true           # release at planned_start when material is available
+  pause_when_down: true
