@@ -1,7 +1,9 @@
 # State model
 
 How state is structured and how it changes. The per-variable reference is
-[variable_reference.md](variable_reference.md), generated from an instrumented run.
+[variable_reference.md](variable_reference.md), generated from an instrumented run. The normative
+semantic classes (measurement, setpoint, condition, capability, availability, …) are defined in the
+[canonical contract §6](../CANONICAL_SIMULATOR_CONTRACT.md#6-state-model-the-semantic-classes).
 
 ## Kinds of variables
 

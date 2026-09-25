@@ -41,6 +41,9 @@ Only through a boundary parameter.
 3. Add its downstream measurements under `process_influences` so causal labels reach them.
 4. **Test:** baseline equality (`test_coupling_baseline_is_native_and_graph_is_acyclic`), the
    healthy-native equivalence test, and a new test that an upstream change moves the parameter.
+5. **Contract:** a new `tep_boundary` relation is a MINOR contract change. Add it to `tep_boundary.couplings`
+   in `contract/canonical_contract.yaml` and to §17 of the [contract](../CANONICAL_SIMULATOR_CONTRACT.md);
+   new output properties need an entry under `properties` (`tests/test_contract.py` fails otherwise).
 
 **Never** add a coupling that writes XMEAS, a TEP state, XMV, SETPT or IDV.
 

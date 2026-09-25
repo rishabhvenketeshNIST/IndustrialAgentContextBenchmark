@@ -92,7 +92,7 @@ path. Results on the final tree are in the last section.
 
 ## Unresolved questions
 
-1. Should the operational API stop exposing ground truth (G1-G10)? This is a behaviour change and
+1. Should the operational API stop exposing ground truth (G1–G12)? This is a behaviour change and
    needs an owner decision.
 2. Should the `*_deviation` storage properties be tagged `unobservable` (D1 in documentation vs
    implementation)? The intent says yes; it is a behaviour change.
@@ -131,7 +131,7 @@ remain open, in [documentation_vs_implementation.md](11_limitations/documentatio
 
 ## Recommended next documentation work
 
-1. After any owner decision on G1-G10, document the observable view as its own contract, like the
+1. After any owner decision on G1–G12, document the observable view as its own contract, like the
    TEP boundary contract.
 2. Run and document the untested fault paths (U9, U10): steam, power and cooling-tower faults on
    quality; lot-composition faults.

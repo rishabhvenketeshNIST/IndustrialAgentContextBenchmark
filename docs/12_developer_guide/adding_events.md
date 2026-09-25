@@ -17,6 +17,8 @@
 4. Payloads must be JSON-serialisable (see `to_jsonable`).
 5. Regenerate [event_catalog.md](../05_state_and_events/event_catalog.md) with
    `scripts/generate_docs_tables.py`.
+6. Add the type to `events.types` in `contract/canonical_contract.yaml` with its visibility and id
+   sequence (a MINOR contract change; `tests/test_contract.py` fails otherwise).
 
 Source:
 - `simulator/events/__init__.py` — `EventType`, `EventBus.publish`, `EventBus.subscribe`

@@ -86,11 +86,33 @@ backend with a warning; the Fortran backend is the authoritative validation back
 
 * **[docs/README.md - read this first](docs/README.md)**: reading order and the 10-minute mental model
 * **[Master simulator specification](docs/MASTER_SIMULATOR_SPEC.md)**
-* [Learning guide](docs/LEARNING_GUIDE.md): ten levels, from "what is this" to limitations
+* **[Canonical simulator contract](docs/CANONICAL_SIMULATOR_CONTRACT.md)**: exact semantics of everything the simulator produces
+* [Learning guide](docs/LEARNING_GUIDE.md): 17 levels, from "what is this" to extending it
 * [Worked demo, step by step](docs/06_scenarios/scenario_examples/SCN-COOL-001.md)
 * [The TEP boundary contract](docs/04_coupling/coupling_contract.md)
 * [Known limitations](docs/11_limitations/known_limitations.md) · [benchmark / ground-truth limitations](docs/11_limitations/benchmark_limitations.md)
-* [Documentation audit](docs/DOCUMENTATION_AUDIT.md)
+* [Documentation audit](docs/DOCUMENTATION_AUDIT.md) · [Changelog](CHANGELOG.md)
+
+## The Canonical Simulator Contract
+
+The simulator is the source of truth for the simulated plant. The **canonical simulator contract**
+describes, precisely, what that truth consists of: every entity, property, process variable, event,
+TEP coupling and API route, with its meaning, owner and update rule. It also says whether each item
+can affect TEP, and whether it is operational information or benchmark ground truth.
+
+* **Why it exists:** future layers (UNS, historian, knowledge graph, i3X, MCP, agents) must consume the
+  simulator without changing what it means. None of these layers is implemented here.
+* **What it does not do:** it does not change or constrain simulator behaviour, and it does not hide
+  ground truth. It documents where ground truth is currently exposed (G1–G12).
+* **Where it is:**
+  * [docs/CANONICAL_SIMULATOR_CONTRACT.md](docs/CANONICAL_SIMULATOR_CONTRACT.md): the contract;
+  * [docs/CANONICAL_SIMULATOR_INVARIANTS.md](docs/CANONICAL_SIMULATOR_INVARIANTS.md): the invariants;
+  * `contract/canonical_contract.yaml`: the machine-readable part, checked against the
+    implementation by `tests/test_contract.py`;
+  * [docs/CANONICAL_CONTRACT_AUDIT.md](docs/CANONICAL_CONTRACT_AUDIT.md): the audit and open
+    ambiguities.
+
+Contract version 0.1.0 (draft) describes simulator version 1.0.0.
 
 ## Key guarantees
 

@@ -43,7 +43,13 @@ in `configs/coupling.yaml`:
 Add alarms in `configs/alarms.yaml → equipment`, for example a vibration alarm with
 `maintenance: corrective`.
 
-## 5. Check
+## 5. Contract
+
+New property names need a semantic class in `contract/canonical_contract.yaml` (`properties`), and
+`tests/test_contract.py` fails until they have one. See [contract §23](../CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)
+for how to version the change.
+
+## 6. Check
 
 ```bash
 python -m pytest

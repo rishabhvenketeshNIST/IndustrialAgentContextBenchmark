@@ -1,7 +1,8 @@
 # Event model
 
 All 46 event types, their emitters, observed counts and payload keys are generated in
-[event_catalog.md](event_catalog.md).
+[event_catalog.md](event_catalog.md). Normative event semantics (state vs event, visibility, time,
+ordering): [canonical contract §16](../CANONICAL_SIMULATOR_CONTRACT.md#16-events).
 
 ## Event fields (`Event`, frozen dataclass)
 

@@ -1,7 +1,8 @@
 # The TEP boundary contract
 
 This is the most important architectural boundary in the simulator. Every write into Fortran memory
-made by Python is listed here, with its code path. Anything not listed does not happen.
+made by Python is listed here, with its code path. Anything not listed does not happen. This page is
+the implementation detail behind [canonical contract §17](../CANONICAL_SIMULATOR_CONTRACT.md#17-tep-boundary).
 
 ## What can enter TEP?
 

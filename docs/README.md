@@ -4,8 +4,20 @@ This documentation describes the enterprise manufacturing simulator **as impleme
 implementation and earlier text disagreed, the implementation won, and the difference is recorded in
 [documentation vs implementation](11_limitations/documentation_vs_implementation.md).
 
-Main specification: **[MASTER_SIMULATOR_SPEC.md](MASTER_SIMULATOR_SPEC.md)**. A tutorial-style walk
-through ten levels: [LEARNING_GUIDE.md](LEARNING_GUIDE.md).
+Main specification: **[MASTER_SIMULATOR_SPEC.md](MASTER_SIMULATOR_SPEC.md)**. Exact semantics of
+everything the simulator produces: **[CANONICAL_SIMULATOR_CONTRACT.md](CANONICAL_SIMULATOR_CONTRACT.md)**
+(with its [invariants](CANONICAL_SIMULATOR_INVARIANTS.md)). A tutorial-style walk through 17 levels:
+[LEARNING_GUIDE.md](LEARNING_GUIDE.md).
+
+Documentation hierarchy, from overview to authority on semantics:
+
+```
+README.md → MASTER_SIMULATOR_SPEC → CANONICAL_SIMULATOR_CONTRACT → subsystem and reference pages → source code and tests
+```
+
+The implementation is authoritative for behaviour; the contract is authoritative for documented
+meaning. Where the two disagree, the disagreement is a recorded defect or ambiguity
+([contract audit](CANONICAL_CONTRACT_AUDIT.md)), never a silent reinterpretation.
 
 ## The 10-minute mental model
 
@@ -20,7 +32,8 @@ through ten levels: [LEARNING_GUIDE.md](LEARNING_GUIDE.md).
    the **coupling engine** evaluates a declarative cause-and-effect model (`configs/coupling.yaml`),
    then TEP integrates one second with its **native controllers**, then enterprise modules observe the
    result.
-4. **The enterprise layer can influence TEP only by changing 17 named "boundary parameters".** These
+4. **The enterprise layer can influence TEP only by changing named "boundary parameters"** (17 defined,
+   15 driven by coupling relations). These
    are physical inputs of the Fortran model, such as the cooling-water line's capacity `VRNG(10)`, the
    compressor limit `CPFLMX`, supply-temperature means and feed compositions. It never overwrites a
    measurement. With a healthy plant these parameters equal their original values, and the simulation
@@ -48,7 +61,7 @@ through ten levels: [LEARNING_GUIDE.md](LEARNING_GUIDE.md).
 | 3 | Manufacturing model | [ISA-95 model](02_manufacturing_model/isa95_model.md), then [equipment](02_manufacturing_model/equipment.md), [utilities](02_manufacturing_model/utilities.md), [materials](02_manufacturing_model/materials_and_storage.md), [production](02_manufacturing_model/production.md), [maintenance](02_manufacturing_model/maintenance.md), [quality](02_manufacturing_model/quality.md) |
 | 4 | TEP integration | [TEP overview](03_tep/tep_overview.md), [provenance](03_tep/tep_version_and_provenance.md), [integration](03_tep/tep_integration.md), [native control](03_tep/native_control.md), [shutdown](03_tep/safety_and_shutdown.md) |
 | 5 | Coupling | [coupling architecture](04_coupling/coupling_architecture.md), **[the TEP boundary contract](04_coupling/coupling_contract.md)**, [boundary variables](04_coupling/boundary_variables.md) |
-| 6 | State and events | [canonical state](05_state_and_events/canonical_state.md), [event model](05_state_and_events/event_model.md), [variable reference](05_state_and_events/variable_reference.md) |
+| 6 | State and events | **[canonical contract](CANONICAL_SIMULATOR_CONTRACT.md)**, [canonical state](05_state_and_events/canonical_state.md), [event model](05_state_and_events/event_model.md), [variable reference](05_state_and_events/variable_reference.md) |
 | 7 | Variable graph | [graph model](07_variable_graph/graph_model.md), [edge types](07_variable_graph/edge_types.md) |
 | 8 | Faults and scenarios | [fault injection](06_scenarios/fault_injection.md), [taxonomy](06_scenarios/fault_taxonomy.md), [causal chains](06_scenarios/causal_chains.md) |
 | 9 | Worked demo | **[SCN-COOL-001 step by step](06_scenarios/scenario_examples/SCN-COOL-001.md)** |
