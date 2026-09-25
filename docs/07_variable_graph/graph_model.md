@@ -18,7 +18,7 @@ what kind of mechanism. It is an **explanatory and audit artefact**. The simulat
 | What | the 67 relations of `coupling.yaml` | coupling graph + TEP physics + native control + module logic + events |
 | Executed by the simulator? | **yes**, every second (`CouplingEngine`) | **no** |
 | Built by | `CouplingEngine.setup` (topological sort) | `scripts/build_variable_graph.py` |
-| Shown in | simulator UI "Causal Model" tab (list), `/api/coupling` | `docs/07_variable_graph/variable_graph.html` (standalone), and the published artifact page "TEP Site Variable Graph" |
+| Shown in | simulator UI "Causal Model" tab (list), `/api/benchmark/coupling` | `docs/07_variable_graph/variable_graph.html` (standalone), and the published artifact page "TEP Site Variable Graph" |
 | Authority | the definition of enterprise → TEP influence | a documentation view; four parts have different authority ([graph generation](graph_generation.md)) |
 
 ## Structure

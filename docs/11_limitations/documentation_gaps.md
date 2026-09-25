@@ -57,18 +57,18 @@ only. See [configuration](../10_operation/configuration.md).
 * **Faults:** `supply_disruption` delaying POs; the `production_order_delay` fault; alarm
   acknowledgement states (`RTN_UNACK`).
 * **Runtime:** the real-time runner (the thread is disabled in tests); the UI in a browser; the
-  `/api/ui/snapshot` event cursor; exports' content values.
+  `/api/benchmark/ui/snapshot` event cursor; exports' content values.
 
 ## Assumptions that need confirmation (by the project owner)
 
 1. The quality limits (47.5-52.5 G mass %, etc.) are acceptable benchmark defaults.
 2. The demo's severity (0.62) near the trip threshold is intended.
-3. Ground-truth leakage on operational routes (G1–G12) is acceptable until an observable view exists.
+3. The operational boundary decisions D1–D5 in the [contract audit](../CANONICAL_CONTRACT_AUDIT.md) (utility meter readings, power utilization, blocked spare parts, inline scenarios, the UI as benchmark console) are acceptable.
 4. The cooling-tower planned maintenance in SCN-FAULT-LIBRARY is meant to disturb the process.
 
 ## Minor implementation observations found while documenting
 
-* `/api/ui/snapshot?after_event=` uses the id of the last returned event as a cursor. When that last
+* `/api/benchmark/ui/snapshot?after_event=` uses the id of the last returned event as a cursor. When that last
   event is a lifecycle `LC-` event, the cursor becomes an `LC-` number, and older `EV-` events can be
   re-sent. The effect is limited to the UI; there is no data impact.
 * Private copies of the Fortran library (temp directories) are never deleted.

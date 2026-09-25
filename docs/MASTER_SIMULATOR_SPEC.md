@@ -271,7 +271,7 @@ Details: [API overview](08_api/api_overview.md), [simulation](08_api/simulation_
 
 ## 18. Validation
 
-**83/83 tests pass (≈ 55 s).** What they establish:
+**104/104 tests pass (≈ 80 s).** What they establish:
 * TEP base case at t = 0 and in closed loop;
 * **bit-identical healthy-enterprise vs native TEP;**
 * determinism of the adapter, full runs and faults;
@@ -312,17 +312,18 @@ equality; Python-backend equality.
 Details: [determinism](09_validation/determinism.md), [seeds and reproducibility](10_operation/seeds_and_reproducibility.md).
 
 **Security and ground-truth separation.**
-* **Enforced:** fault control and fault events are benchmark-only.
-* **Not enforced:** correlation ids, health, boundary values, true measurements in history, lot
-  deviations, exports and scenario files are reachable from operational routes (G1–G12).
-* **No authentication.**
+* **Enforced:** every route outside `/api/benchmark/*` serves the operational view (`api/operational.py`):
+  no fault or scenario identity, seeds, fault-derived correlation, health, capability, utility status,
+  boundary values or true measurements, and a gap-free event stream. Ground truth, evaluator views and
+  the web UI (benchmark console) are under `/api/benchmark/*`.
+* **No authentication:** the boundary is the route namespace.
 
 Details: [benchmark limitations](11_limitations/benchmark_limitations.md).
 
 ## 20. Limitations
 
 Key items:
-* ground-truth leakage (L1);
+* the operational boundary is route separation without authentication (L1);
 * no restart after a trip (L2);
 * native wind-up (L3), preserved;
 * uncalibrated enterprise models (L4);
@@ -356,5 +357,5 @@ Each is validated at start-up and checked by the tests plus `scripts/check_docs.
 * **Future** (not implemented): canonical state → UNS / historian / KG / live state → i3X → MCP →
   agent → evaluator.
 
-The simulator remains independently runnable. **Before building those layers, define and enforce an
-observable view** (§19). See [future extensions](11_limitations/future_extensions.md).
+The simulator remains independently runnable. **Those layers must consume only the operational
+routes**, whose boundary is defined in the [canonical contract](CANONICAL_SIMULATOR_CONTRACT.md) §20. See [future extensions](11_limitations/future_extensions.md).

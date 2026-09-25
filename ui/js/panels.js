@@ -37,7 +37,7 @@ export async function renderVariables(pane) {
 
 // ------------------------------------------------------------------ utilities
 export async function renderUtilities(pane) {
-  const [ut, mt] = await Promise.all([api("/api/utilities"), api("/api/maintenance")]);
+  const [ut, mt] = await Promise.all([api("/api/benchmark/utilities"), api("/api/benchmark/maintenance")]);
   const cards = Object.values(ut).map(u => {
     const p = u.properties, un = u.units || {};
     return `<div class="card"><h4><span data-action="select" data-id="${esc(u.id)}" style="cursor:pointer">${esc(u.name)}</span>${pill(p.status)}</h4>
@@ -60,7 +60,7 @@ export async function renderUtilities(pane) {
 
 // ------------------------------------------------------------------ maintenance
 export async function renderMaintenance(pane) {
-  const m = await api("/api/maintenance");
+  const m = await api("/api/benchmark/maintenance");
   const wos = m.work_orders.map(w => `<tr><td class="mono">${esc(w.wo_id)}</td><td>${esc(w.asset_id)}</td><td>${esc(w.kind)}</td>
     <td class="num">P${w.priority}</td><td>${esc(w.description)}</td><td>${pill(w.status)}</td><td>${esc(w.technician || "")}</td>
     <td class="mono">${hms(w.requested_s)}</td><td class="mono">${hms(w.scheduled_start_s)}</td><td class="mono">${hms(w.completed_s)}</td>
@@ -171,7 +171,7 @@ export async function renderProduction(pane) {
 export async function renderAlarms(pane, ui) {
   const typeFilter = ui.eventFilter || "";
   const [alarms, events] = await Promise.all([api("/api/alarms"),
-    api(`/api/events?limit=400${typeFilter ? "&types=" + encodeURIComponent(typeFilter) : ""}`)]);
+    api(`/api/benchmark/events?limit=400${typeFilter ? "&types=" + encodeURIComponent(typeFilter) : ""}`)]);
   const arow = alarms.map(a => `<tr><td>${pill(a.priority, a.priority === "CRITICAL" ? "critical" : a.priority === "HIGH" ? "warning" : "serious")}</td>
     <td class="mono">${esc(a.alarm_id)}</td><td>${esc(a.message)}</td><td>${pill(a.state)}</td>
     <td class="mono">${hms(a.activation_time)}</td><td class="num">${fmt(a.activation_value, 3)}</td><td class="num">${fmt(a.value, 3)}</td>
@@ -204,7 +204,7 @@ function summarize(p) {
 
 // ------------------------------------------------------------------ causal model
 export async function renderCausal(pane) {
-  const c = await api("/api/coupling");
+  const c = await api("/api/benchmark/coupling");
   const b = Object.entries(c.boundary).map(([k, v]) => {
     const nom = c.boundary_nominal[k], d = c.boundary_definitions[k];
     const dev = Math.abs(v - nom) > 1e-9 * Math.max(1, Math.abs(nom));
@@ -228,7 +228,7 @@ export async function renderCausal(pane) {
 
 // ------------------------------------------------------------------ scenario
 export async function renderScenario(pane, sim) {
-  const list = await api("/api/scenarios");
+  const list = await api("/api/benchmark/scenarios");
   const man = sim.manifest || {};
   pane.innerHTML = `<div class="cards"><div class="card"><h4>Run manifest</h4>${kv([["run id", esc(man.run_id)], ["scenario", esc(man.scenario_id)],
       ["seed", esc(man.seed)], ["TEP seed (G)", esc(man.tep_seed)], ["TEP backend", esc(man.tep_backend)], ["simulator", esc(man.simulator_version)],

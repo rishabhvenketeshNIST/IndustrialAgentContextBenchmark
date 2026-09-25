@@ -41,8 +41,8 @@ function bindControls() {
   }, "Simulation reset to t = 0");
   $("btn-load").onclick = () => loadScenario($("scenario-select").value);
   $("speed-select").onchange = (e) => act(() => post("/api/simulation/speed", { speed: parseFloat(e.target.value) }));
-  $("btn-export-json").onclick = () => { window.location = "/api/export/json"; };
-  $("btn-export-csv").onclick = () => { window.location = "/api/export/csv"; };
+  $("btn-export-json").onclick = () => { window.location = "/api/benchmark/export/json"; };
+  $("btn-export-csv").onclick = () => { window.location = "/api/benchmark/export/csv"; };
   $("btn-theme").onclick = () => {
     const cur = document.documentElement.getAttribute("data-theme");
     const dark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
@@ -117,12 +117,12 @@ async function onAction(e) {
   } else if (a === "load-scenario") { await loadScenario(t.dataset.id); }
   else if (a === "dup-scenario") {
     const nid = prompt("New scenario id", t.dataset.id + "-COPY");
-    if (nid) { await act(() => post(`/api/scenarios/${encodeURIComponent(t.dataset.id)}/duplicate`, { new_id: nid }), "Duplicated"); loadScenarioList(); renderTab(true); }
+    if (nid) { await act(() => post(`/api/benchmark/scenarios/${encodeURIComponent(t.dataset.id)}/duplicate`, { new_id: nid }), "Duplicated"); loadScenarioList(); renderTab(true); }
   } else if (a === "save-scenario") {
     await act(async () => {
-      const sc = await api("/api/scenarios/current");
+      const sc = await api("/api/benchmark/scenarios/current");
       sc.id = $("save-id").value.trim(); if ($("save-name").value) sc.name = $("save-name").value;
-      await post("/api/scenarios", sc);
+      await post("/api/benchmark/scenarios", sc);
     }, "Scenario saved");
     loadScenarioList(); renderTab(true);
   }
@@ -146,7 +146,7 @@ async function poll(force = false) {
   if (ui.busy && !force) return;
   ui.busy = true;
   try {
-    const snap = await api("/api/ui/snapshot" + (ui.lastEvent ? `?after_event=${ui.lastEvent}` : ""));
+    const snap = await api("/api/benchmark/ui/snapshot" + (ui.lastEvent ? `?after_event=${ui.lastEvent}` : ""));
     ui.snap = snap;
     if (snap.events && snap.events.length) ui.lastEvent = snap.events[snap.events.length - 1].event_id;
     renderTop(snap);
@@ -264,7 +264,7 @@ async function renderDetail() {
   if (!id || !ui.snap) return;
   if (box.contains(document.activeElement) && document.activeElement.tagName === "INPUT") return;  // don't clobber typing
   let ent;
-  try { ent = await api(`/api/entities/${encodeURIComponent(id)}`); } catch (e) { box.innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
+  try { ent = await api(`/api/benchmark/entities/${encodeURIComponent(id)}`); } catch (e) { box.innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
   const meta = ent.meta || {};
   const props = ent.properties || {};
   const units = ent.units || {};
@@ -399,7 +399,7 @@ async function refreshTrends() {
   const w = parseInt($("trend-window").value);
   const names = [...new Set(ui.charts.flatMap(c => c.spec.series.map(s => s.name)))];
   try {
-    const data = await api(`/api/history?series=${encodeURIComponent(names.join("|"))}${w ? `&since=${Math.max(0, now - w)}` : ""}&max_points=1200`);
+    const data = await api(`/api/benchmark/history?series=${encodeURIComponent(names.join("|"))}${w ? `&since=${Math.max(0, now - w)}` : ""}&max_points=1200`);
     for (const c of ui.charts) c.setData(data, c.spec.series);
   } catch (e) { /* series may not exist in a new run */ }
 }
@@ -433,7 +433,7 @@ function renderPicker() {
 
 // ------------------------------------------------------------------------------ init
 async function loadScenarioList() {
-  const list = await api("/api/scenarios");
+  const list = await api("/api/benchmark/scenarios");
   const cur = ui.snap?.simulation?.scenario?.id;
   $("scenario-select").innerHTML = list.filter(s => !s.error).map(s => `<option value="${esc(s.id)}" ${s.id === cur ? "selected" : ""}>${esc(s.id)} – ${esc(s.name)}</option>`).join("");
 }
@@ -446,7 +446,7 @@ async function init() {
     await post("/api/simulation/create", { scenario_id: "SCN-COOL-001" });
     await poll(true);
   }
-  ui.catalog = await api("/api/history/catalog");
+  ui.catalog = await api("/api/benchmark/history/catalog");
   const loops = await api("/api/process/loops");
   for (const l of loops) ui.loopsByPv[l.pv_id] = l.tag;
   await loadScenarioList();

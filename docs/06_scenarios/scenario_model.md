@@ -40,7 +40,7 @@ flowchart LR
 * **Reset:** rebuild from the same scenario (and duration override).
 * **Save:** refuses to overwrite unless `overwrite=true`.
 * **Duplicate:** copy under a new id.
-* **Save current run:** the UI "Scenario" tab calls `/api/scenarios/current`. That converts the faults
+* **Save current run:** the UI "Scenario" tab calls `/api/benchmark/scenarios/current`. That converts the faults
   existing in the run into scenario faults: a fault that has activated becomes a
   `simulation_time` trigger at its activation time, one that never activated stays `manual`. The
   interactive history of *when* things were stopped or reset is not preserved.

@@ -20,7 +20,7 @@
 #   influences_tep true when the value is an input, directly or transitively, of a tep_boundary relation
 
 contract:
-  version: 0.1.0
+  version: 0.2.0
   status: draft            # draft until the ambiguities in docs/CANONICAL_CONTRACT_AUDIT.md are decided
   describes_simulator_version: 1.0.0   # simulator/__init__.py __version__
 
@@ -110,15 +110,15 @@ properties:
     status: {class: discrete_state, owner: InventoryModule, observability: operational}
     current_lot: {class: record_reference, owner: InventoryModule, observability: operational}
     lots: {class: record_reference, owner: WarehouseModule, observability: operational}
-    supply_availability: {class: availability, owner: InventoryModule, observability: model_internal, influences_tep: true,
-                          note: "tagged meta.unobservable; heel/ramp function of usable stock"}
+    supply_availability: {class: availability, owner: InventoryModule, observability: operational, influences_tep: true,
+                          note: "heel/ramp function of usable (released) stock; derivable from operational data, source of the IA-*-E alarms"}
     feed_impurity: {class: material_composition, owner: InventoryModule, observability: model_internal, note: "tagged meta.unobservable"}
     feed_a_fraction: {class: material_composition, owner: InventoryModule, observability: model_internal, note: "tagged meta.unobservable"}
     feed_b_fraction: {class: material_composition, owner: InventoryModule, observability: model_internal, note: "tagged meta.unobservable"}
     feed_impurity_deviation: {class: material_composition, owner: InventoryModule, observability: model_internal, influences_tep: true,
-                              note: "AMBIGUITY A1: intended unobservable but not tagged; exposed by /api/inventory"}
-    feed_a_fraction_deviation: {class: material_composition, owner: InventoryModule, observability: model_internal, influences_tep: true, note: "AMBIGUITY A1"}
-    feed_b_fraction_deviation: {class: material_composition, owner: InventoryModule, observability: model_internal, influences_tep: true, note: "AMBIGUITY A1"}
+                              note: "tagged meta.unobservable (A1 resolved in contract 0.2.0)"}
+    feed_a_fraction_deviation: {class: material_composition, owner: InventoryModule, observability: model_internal, influences_tep: true, note: "tagged meta.unobservable"}
+    feed_b_fraction_deviation: {class: material_composition, owner: InventoryModule, observability: model_internal, influences_tep: true, note: "tagged meta.unobservable"}
     capacity_kg: {class: configuration, owner: InventoryModule, observability: configuration}
     material: {class: configuration, owner: InventoryModule | WarehouseModule, observability: configuration}
   utility:
@@ -131,13 +131,15 @@ properties:
     availability: {class: availability, owner: UtilitiesModule, observability: model_internal,
                    note: "capacity_fraction clipped to 0..1 (fallback available/capacity)"}
     health: {class: condition, owner: CouplingEngine, observability: model_internal, note: "aggregate of supplying asset health"}
-    status: {class: discrete_state, owner: UtilitiesModule, observability: operational,
-             note: "AMBIGUITY A3: derived from model-internal availability as well as observable utilization"}
+    status: {class: discrete_state, owner: UtilitiesModule, observability: model_internal,
+             note: "classified from model-internal availability and health (A3); tagged meta.model_internal"}
     flow: {class: utility_observation, owner: CouplingEngine, observability: operational}
     demand: {class: utility_observation, owner: CouplingEngine, observability: operational}
     process_demand: {class: utility_observation, owner: CouplingEngine, observability: operational, influences_tep: true,
                      note: "AMBIGUITY A4: an observation (reads XMEAS(20), XMV(12)) that feeds supply fraction"}
-    utilization: {class: utility_observation, owner: CouplingEngine, observability: operational}
+    utilization: {class: utility_observation, owner: CouplingEngine, observability: operational,
+                  observability_by_utility_type: {steam: model_internal},
+                  note: "cooling water: equals XMV/100 of the previous step; power: supply limit treated as known (decision D2); steam: denominator is hidden boiler capacity"}
     return_temperature: {class: utility_observation, owner: CouplingEngine, observability: operational}
     temperature: {class: utility_observation, owner: CouplingEngine, observability: operational, influences_tep: true,
                   note: "CW supply temperature; also the source of SZERO(5)/SZERO(6). Null on UT-POWER (AMBIGUITY A5)"}
@@ -264,15 +266,44 @@ events:
     MATERIAL_SHORTAGE_CLEARED: {visibility: operational, id: EV, records_change_of: storage status}
     INVENTORY_MOVED: {visibility: operational, id: EV, records_change_of: lot location / shipment}
     OPERATOR_ACTION: {visibility: operational, id: EV, records_change_of: operator log}
-  ground_truth_fields: [correlation_id, causation_id]   # carry fault ids on operational events (leak G1)
+  ground_truth_fields: [correlation_id, causation_id]   # canonical events carry fault ids; the operational stream rebuilds them
 
 # ------------------------------------------------------------------------------------------------
-# API route classification (api/app.py). class: operational | benchmark | control | development.
-# exposes lists ground-truth exposures (ids from docs/11_limitations/benchmark_limitations.md).
+# Operational boundary (api/operational.py). Every /api route outside /api/benchmark applies these
+# rules; the canonical state and event log are unchanged and remain available under /api/benchmark.
+# ------------------------------------------------------------------------------------------------
+operational_boundary:
+  implementation: api/operational.py
+  hidden_properties: entity properties tagged meta.model_internal or meta.unobservable by their owning module
+  hidden_property_response: same as a missing property (HTTP 404)
+  asset_status_mapping: {DEGRADED: RUNNING}   # DEGRADED encodes the true health band
+  event_stream:
+    ids: "OE-nnnnnnn, sequential over the operational stream only; LC- ids unchanged"
+    withheld_types: [FAULT_CREATED, FAULT_SCHEDULED, FAULT_STARTED, FAULT_STOPPED, FAULT_RESET, UTILITY_STATE_CHANGED, EQUIPMENT_DEGRADED]
+    withheld_transitions: "EQUIPMENT_STATE_CHANGED whose old and new status map to the same operational status"
+    correlation: "rebuilt from operational causation only: causation_id = operational id of the causing event if it is in the stream, else null; correlation_id = the causing event's operational correlation, else the event's own id"
+    payload_redactions:
+      SIMULATION_STARTED: [run_id, scenario_id, seed]
+      SIMULATION_COMPLETED: [run_id]
+      SIMULATION_RESET: [scenario_id]
+      EQUIPMENT_STATE_CHANGED: [health]
+      EQUIPMENT_FAILED: [health, reason]
+      EQUIPMENT_REPAIRED: [health_before, health_after, cleared_fault_effects]
+    evaluator_mapping: "/api/benchmark/events returns canonical events with operational_id"
+  manifest_fields: [simulation_start, duration_seconds, control_mode, simulator_version, tep_backend, tep_version (without tep_seed), simulated_seconds, simulation_end, status, process_shutdown, process_shutdown_reason]
+  history: TRUE:XMEAS series and series of hidden properties are not listed and are rejected like unknown series
+  process_image: transmitted XMEAS, quality, XMV, loops, mode, shutdown (no boundary, no true XMEAS, no IDV)
+
+# ------------------------------------------------------------------------------------------------
+# API route classification (api/app.py). class: operational | control | benchmark.
+#   operational - served through the operational boundary; exposes no ground truth
+#   control     - simulation lifecycle and operator commands; responses use the operational view
+#   benchmark   - fault injection, ground truth, evaluator views and the benchmark console (web UI)
+# exposes lists remaining documented exposures (ids from docs/11_limitations/benchmark_limitations.md).
 # ------------------------------------------------------------------------------------------------
 api_routes:
-  "GET /api/simulation": {class: operational, exposes: [G12]}
-  "POST /api/simulation/create": {class: control}
+  "GET /api/simulation": {class: operational}
+  "POST /api/simulation/create": {class: control, note: "accepts an inline scenario; see decision D5 in the contract audit"}
   "POST /api/simulation/start": {class: control}
   "POST /api/simulation/pause": {class: control}
   "POST /api/simulation/resume": {class: control}
@@ -280,44 +311,34 @@ api_routes:
   "POST /api/simulation/step": {class: control}
   "POST /api/simulation/run_until": {class: control}
   "POST /api/simulation/speed": {class: control}
-  "GET /api/simulation/manifest": {class: operational, exposes: [G11]}
+  "GET /api/simulation/manifest": {class: operational}
   "GET /api/enterprise": {class: operational}
   "GET /api/site": {class: operational}
   "GET /api/areas": {class: operational}
   "GET /api/hierarchy": {class: operational}
   "GET /api/equipment": {class: operational}
-  "GET /api/equipment/{entity_id}": {class: operational, exposes: [G2]}
-  "GET /api/entities": {class: operational, exposes: [G2, G5]}
-  "GET /api/entities/{entity_id}": {class: operational, exposes: [G2, G5]}
-  "GET /api/entities/{entity_id}/properties/{prop}": {class: operational, exposes: [G2, G5]}
+  "GET /api/equipment/{entity_id}": {class: operational}
+  "GET /api/entities": {class: operational}
+  "GET /api/entities/{entity_id}": {class: operational}
+  "GET /api/entities/{entity_id}/properties/{prop}": {class: operational}
   "GET /api/process/measurements": {class: operational}
   "GET /api/process/setpoints": {class: operational}
   "GET /api/process/manipulated-variables": {class: operational}
   "GET /api/process/loops": {class: operational}
-  "GET /api/process/image": {class: operational, exposes: [G3]}
+  "GET /api/process/image": {class: operational}
   "GET /api/process/catalog": {class: operational}
-  "GET /api/process/internal-states": {class: development, exposes: [G8]}
   "GET /api/alarms": {class: operational}
-  "GET /api/events": {class: operational, exposes: [G1]}
-  "GET /api/utilities": {class: operational, exposes: [G2]}
-  "GET /api/maintenance": {class: operational, exposes: [G2]}
-  "GET /api/inventory": {class: operational, exposes: [G5]}
+  "GET /api/events": {class: operational}
+  "GET /api/utilities": {class: operational}
+  "GET /api/maintenance": {class: operational}
+  "GET /api/inventory": {class: operational}
   "GET /api/quality": {class: operational}
   "GET /api/production-orders": {class: operational}
   "GET /api/production": {class: operational}
-  "GET /api/coupling": {class: development, exposes: [G3, G9]}
-  "GET /api/history": {class: operational, exposes: [G4]}
+  "GET /api/history": {class: operational}
   "GET /api/history/catalog": {class: operational}
   "GET /api/operator/actions": {class: operational}
   "POST /api/operator/{action}": {class: control}
-  "GET /api/scenarios": {class: development, exposes: [G7]}
-  "GET /api/scenarios/current": {class: development, exposes: [G7]}
-  "GET /api/scenarios/{scenario_id}": {class: development, exposes: [G7]}
-  "POST /api/scenarios": {class: development}
-  "POST /api/scenarios/{scenario_id}/duplicate": {class: development}
-  "GET /api/export/json": {class: development, exposes: [G6]}
-  "GET /api/export/csv": {class: development, exposes: [G6]}
-  "GET /api/ui/snapshot": {class: operational, exposes: [G1, G2, G3, G12]}
   "GET /api/benchmark/faults/catalog": {class: benchmark}
   "GET /api/benchmark/faults": {class: benchmark}
   "POST /api/benchmark/faults": {class: benchmark}
@@ -327,3 +348,23 @@ api_routes:
   "POST /api/benchmark/faults/{fault_id}/stop": {class: benchmark}
   "POST /api/benchmark/faults/{fault_id}/reset": {class: benchmark}
   "GET /api/benchmark/ground-truth": {class: benchmark}
+  "GET /api/benchmark/simulation": {class: benchmark}
+  "GET /api/benchmark/manifest": {class: benchmark}
+  "GET /api/benchmark/entities/{entity_id}": {class: benchmark}
+  "GET /api/benchmark/utilities": {class: benchmark}
+  "GET /api/benchmark/maintenance": {class: benchmark}
+  "GET /api/benchmark/inventory": {class: benchmark}
+  "GET /api/benchmark/events": {class: benchmark}
+  "GET /api/benchmark/history": {class: benchmark}
+  "GET /api/benchmark/history/catalog": {class: benchmark}
+  "GET /api/benchmark/process/image": {class: benchmark}
+  "GET /api/benchmark/process/internal-states": {class: benchmark}
+  "GET /api/benchmark/coupling": {class: benchmark}
+  "GET /api/benchmark/scenarios": {class: benchmark}
+  "GET /api/benchmark/scenarios/current": {class: benchmark}
+  "GET /api/benchmark/scenarios/{scenario_id}": {class: benchmark}
+  "POST /api/benchmark/scenarios": {class: benchmark}
+  "POST /api/benchmark/scenarios/{scenario_id}/duplicate": {class: benchmark}
+  "GET /api/benchmark/export/json": {class: benchmark}
+  "GET /api/benchmark/export/csv": {class: benchmark}
+  "GET /api/benchmark/ui/snapshot": {class: benchmark}

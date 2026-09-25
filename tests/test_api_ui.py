@@ -29,7 +29,7 @@ def test_ui_is_served(client):
 
 def test_snapshot_reflects_engine_state(client):
     client.post("/api/simulation/step", json={"n": 900})
-    snap = client.get("/api/ui/snapshot").json()
+    snap = client.get("/api/benchmark/ui/snapshot").json()
     e = client.svc.engine
     assert snap["simulation"]["clock"]["time_s"] == e.clock.time_s == 900
     assert np.allclose(snap["process"]["xmeas"], e.state.process.xmeas)
@@ -49,7 +49,7 @@ def test_required_operations_exist(client):
     for path in ("/api/simulation", "/api/enterprise", "/api/site", "/api/areas", "/api/equipment",
                  "/api/process/measurements", "/api/process/setpoints", "/api/process/manipulated-variables",
                  "/api/alarms", "/api/events", "/api/maintenance", "/api/inventory", "/api/quality",
-                 "/api/production-orders", "/api/utilities", "/api/coupling", "/api/scenarios"):
+                 "/api/production-orders", "/api/utilities", "/api/benchmark/coupling", "/api/benchmark/scenarios"):
         assert client.get(path).status_code == 200, path
     areas = client.get("/api/areas").json()
     assert {a["id"] for a in areas} >= {"AREA-REACTION", "AREA-UTILITIES"}
@@ -97,11 +97,11 @@ def test_fault_injection_is_benchmark_only(client):
 
 def test_export(client):
     client.post("/api/simulation/step", json={"n": 1200})
-    j = client.get("/api/export/json").json()
+    j = client.get("/api/benchmark/export/json").json()
     for k in ("run_manifest", "events", "measurements", "manipulated_variables", "setpoints", "equipment_states",
               "alarms", "faults", "maintenance", "inventory", "quality", "production_orders"):
         assert k in j, k
-    z = zipfile.ZipFile(io.BytesIO(client.get("/api/export/csv").content))
+    z = zipfile.ZipFile(io.BytesIO(client.get("/api/benchmark/export/csv").content))
     names = set(z.namelist())
     assert {"run_manifest.json", "events.csv", "measurements.csv", "manipulated_variables.csv", "setpoints.csv",
             "equipment_states.csv", "alarms.csv", "faults.csv", "work_orders.csv", "production_orders.csv",
@@ -113,10 +113,10 @@ def test_export(client):
 def test_scenario_save_duplicate(client, tmp_path):
     from simulator.scenarios import ScenarioStore
     client.svc.store = ScenarioStore(tmp_path)
-    sc = client.get("/api/scenarios/current").json()
+    sc = client.get("/api/benchmark/scenarios/current").json()
     sc["id"] = "SCN-X"
-    assert client.post("/api/scenarios", json=sc).status_code == 200
-    assert client.post("/api/scenarios/SCN-X/duplicate", json={"new_id": "SCN-Y"}).status_code == 200
-    ids = {s["id"] for s in client.get("/api/scenarios").json()}
+    assert client.post("/api/benchmark/scenarios", json=sc).status_code == 200
+    assert client.post("/api/benchmark/scenarios/SCN-X/duplicate", json={"new_id": "SCN-Y"}).status_code == 200
+    ids = {s["id"] for s in client.get("/api/benchmark/scenarios").json()}
     assert {"SCN-X", "SCN-Y"} <= ids
-    assert client.post("/api/scenarios", json=sc).status_code == 400    # no silent overwrite
+    assert client.post("/api/benchmark/scenarios", json=sc).status_code == 400    # no silent overwrite

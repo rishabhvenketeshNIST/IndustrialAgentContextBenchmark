@@ -17,6 +17,16 @@ from ..simulation.module import ModuleContext, SimulationModule
 UTILITY_PROPERTIES = ("capacity", "available_capacity", "demand", "utilization", "flow", "temperature",
                       "pressure", "health", "availability", "status")
 
+# Model-internal quantities (metadata only; nothing in the simulation reads this tag). They are computed
+# from equipment health, capability and fault causes, which no plant instrument measures; the status is
+# classified from them. Meter-like values (flow, demand, pressure, temperature, voltage) stay operational.
+# Utilization is model-internal where its denominator is hidden capacity: for steam it is the degraded
+# boiler capacity. For cooling water, flow / min(available, capacity) equals XMV/100 exactly, and the
+# power supply limit is treated as known to the site energy system (docs/CANONICAL_CONTRACT_AUDIT.md).
+MODEL_INTERNAL = ("available_capacity", "available_for_process", "capacity_fraction", "process_supply_fraction",
+                  "availability", "health", "status")
+MODEL_INTERNAL_BY_TYPE = {"steam": ("utilization",)}
+
 
 class UtilitiesModule(SimulationModule):
     name = "utilities"
@@ -39,7 +49,9 @@ class UtilitiesModule(SimulationModule):
             units.update(spec.get("units", {}))
             ctx.state.register_entity(sid, "utility", spec.get("name", sid), props, units,
                                       {"utility_type": spec.get("utility_type"),
-                                       "supplied_by": spec.get("supplied_by"), "serves": spec.get("serves", [])})
+                                       "supplied_by": spec.get("supplied_by"), "serves": spec.get("serves", []),
+                                       "model_internal": list(MODEL_INTERNAL) + list(
+                                           MODEL_INTERNAL_BY_TYPE.get(spec.get("utility_type"), ()))})
             self._status[sid] = "NORMAL"
 
     def _classify(self, sid: str) -> tuple:

@@ -4,9 +4,8 @@ Properties that must remain true for the simulator to mean what the
 [canonical contract](CANONICAL_SIMULATOR_CONTRACT.md) says it means. Each invariant lists why it
 matters, the implementation evidence, the tests that protect it, and what would violate it.
 
-Invariants I1–I12 hold today and are protected by tests. T1–T2 are **target invariants**: the
-contract requires them for any agent-facing use, but the current implementation does **not** satisfy
-them. They are listed so that nobody assumes otherwise.
+All invariants I1–I14 hold and are protected by tests. I13 and I14 (the operational boundary) were
+target invariants in contract 0.1.0 and hold since 0.2.0.
 
 | # | Invariant | Status |
 |---|---|---|
@@ -22,8 +21,8 @@ them. They are listed so that nobody assumes otherwise.
 | I10 | Time is integer seconds; event order is deterministic | holds, tested |
 | I11 | Fault control and fault events are benchmark-only | holds, tested |
 | I12 | Everything produced has contract semantics | holds, tested |
-| T1 | Operational interfaces expose no benchmark ground truth | **violated today** (G1–G12) |
-| T2 | Model-internal values are not operationally observable | **violated today** |
+| I13 | Operational interfaces expose no benchmark ground truth | holds, tested (since contract 0.2.0) |
+| I14 | Model-internal values are not operationally observable | holds, tested (since contract 0.2.0) |
 
 ---
 
@@ -164,26 +163,57 @@ them. They are listed so that nobody assumes otherwise.
 
 ---
 
-### T1: Operational interfaces expose no benchmark ground truth (target, violated today)
+### I13: Operational interfaces expose no benchmark ground truth
 
-* **Statement:** nothing reachable without benchmark authority reveals fault identity, cause
-  channels, the causal registry, scenario fault definitions or fault-derived correlation.
-* **Status:** violated through leaks G1–G12 ([benchmark limitations](11_limitations/benchmark_limitations.md));
-  `contract/canonical_contract.yaml` → `api_routes` lists them per route.
-* **Required before any agent-facing layer:** an allow-listed observable view (contract §25).
-* **Would be protected by:** a negative test over the observable view asserting the absence of every
-  benchmark-class field.
+* **Statement:** nothing served under `/api/*` outside `/api/benchmark/*` lets a consumer recover:
+  * fault identity or fault definitions;
+  * cause channels or the causal registry;
+  * fault-derived correlation;
+  * scenario identity, seeds or the configuration hash;
+  * the timing of withheld events (no gaps in operational event ids).
+* **Why:** a system under test must infer causes from plant observations, while the evaluator must
+  still know them.
+* **Evidence:** `api/operational.py` builds every operational response; truth-bearing routes are under
+  `/api/benchmark/*`; the canonical state and event log are unchanged.
+* **Tests** (`tests/test_operational_boundary.py`):
+  * `test_operational_routes_do_not_reveal_fault_or_scenario_identity` crawls every operational route,
+    at 01:15 (hidden degradation) and at the end of the demo;
+  * `test_operational_event_stream_is_self_contained_and_gap_free`;
+  * `test_operational_stream_matches_fault_free_run_until_the_first_symptom`;
+  * `test_manifest_and_simulation_state_carry_no_scenario_identity`;
+  * `test_truth_routes_are_not_operational`;
+  * `test_evaluator_routes_retain_the_true_cause`;
+  * `tests/test_contract.py::test_operational_boundary_rules_match_contract` and
+    `test_every_api_route_is_classified`.
+* **Violation:** a fault id, fault type, scenario id/name/description, run id, seed or configuration
+  hash in an operational response; an operational event whose correlation or causation points outside
+  the operational stream; a gap in `OE-` ids; a truth-bearing route outside `/api/benchmark/*`.
+* **Scope:** the boundary is the route namespace. There is no authentication.
 
-### T2: Model-internal values are not operationally observable (target, violated today)
+### I14: Model-internal values are not operationally observable
 
-* **Statement:** properties with `observability: model_internal` (health, capability, availability,
-  lot composition) are not served to a system under test.
-* **Status:** `model_internal` and `unobservable` tags exist but nothing filters on them; the
-  `*_deviation` properties are not even tagged (ambiguity A1).
-* **Would be protected by:** the same observable-view test as T1.
+* **Statement:** properties the contract classifies `model_internal` are withheld from operational
+  routes and indistinguishable from missing properties. These are health, capability, utility
+  availability and status, and lot composition and deviation. Values derived from them are not served
+  either (asset DEGRADED, utility status events, hidden-property history series). No alarm is defined
+  on a hidden property.
+* **Evidence:** owning modules tag the properties (`meta.model_internal`, `meta.unobservable`);
+  `api/operational.py` filters on those tags.
+* **Tests:**
+  * `tests/test_contract.py::test_metadata_tags_agree_with_contract_observability`: tags ⇔ contract,
+    both directions;
+  * `test_model_internal_properties_are_hidden_and_indistinguishable_from_missing`;
+  * `test_hidden_degradation_is_not_reported_as_status`;
+  * `test_history_and_process_image_exclude_truth`;
+  * `test_alarm_sources_are_operational`;
+  * `test_cooling_water_utilization_equals_valve_position` (why CW utilization stays operational).
+* **Violation:** a model-internal property or a value derived from one on an operational route; a
+  contract `model_internal` property that its module does not tag.
 
 Source:
 - `tests/test_contract.py`
+- `tests/test_operational_boundary.py`
+- `api/operational.py` — `OperationalEventView`, `hidden_properties`
 - `tests/test_reproducibility.py` — `test_healthy_enterprise_reproduces_native_tep_exactly`
 - `simulator/tep/interface.py` — `BaseTEPAdapter.step`
 - `simulator/coupling/__init__.py` — `CouplingEngine.setup`, `Ref.parse`

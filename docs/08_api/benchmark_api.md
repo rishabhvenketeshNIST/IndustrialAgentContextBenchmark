@@ -30,9 +30,18 @@ Validation failures return 400, for example:
   `/api/fault*` paths.
 * `/api/events` never returns FAULT_* events.
 
-**Not guaranteed today:** ground truth still reaches non-benchmark routes (correlation ids, health,
-boundary values, true measurements in history, exports, scenario files). See
-[benchmark limitations](../11_limitations/benchmark_limitations.md).
+**Also guaranteed** since contract 0.2.0 (`tests/test_operational_boundary.py`): no operational
+route carries ground truth. Truth-bearing views, used by an evaluator and by the web UI, are here:
+
+* `GET /api/benchmark/simulation` and `/manifest`: scenario identity, faults, seeds;
+* `/events`: canonical events with true correlation and `operational_id`;
+* `/entities/{id}`, `/utilities`, `/maintenance`, `/inventory`: all properties;
+* `/process/image`: true XMEAS, IDV, boundary;
+* `/process/internal-states`, `/coupling`, `/history` and `/history/catalog`;
+* `/scenarios*`, `/export/*` and `/ui/snapshot`.
+
+See [benchmark limitations](../11_limitations/benchmark_limitations.md). There is no authentication:
+a system under test must be given the operational routes only.
 
 Source:
 - `api/service.py` — `BenchmarkFaultAPI`

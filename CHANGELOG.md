@@ -4,7 +4,84 @@ Notable changes to this repository. The simulator version is `simulator.__versio
 contract version is `contract.version` in `contract/canonical_contract.yaml`
 (see [contract §23](docs/CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)).
 
-## [Unreleased]: canonical simulator contract
+## [Unreleased]: operational information boundary (contract 0.2.0)
+
+Closes the operational ground-truth leaks found by the contract audit. **Simulator behaviour is
+unchanged** (simulator version 1.0.0). The full 3 h SCN-COOL-001 run produces the same internal event
+log, trends, final TEP states and run id as before. Contract version 0.1.0 → 0.2.0: breaking for
+operational consumers.
+
+### Added
+
+- **Boundary module:** `api/operational.py`, the operational information boundary. Every route
+  outside `/api/benchmark/*` is built through it:
+  - model-internal properties withheld (answer 404 like missing ones);
+  - asset DEGRADED reported as RUNNING;
+  - operational event stream: no FAULT_*, `UTILITY_STATE_CHANGED`, `EQUIPMENT_DEGRADED` or
+    RUNNING↔DEGRADED transitions; correlation rebuilt from operational causation; gap-free `OE-` ids;
+    redacted payloads;
+  - redacted manifest;
+  - no truth in history or the process image.
+- **Evaluator / console routes:** `/api/benchmark/simulation`, `/manifest`, `/entities/{id}`,
+  `/utilities`, `/maintenance`, `/inventory`, `/events` (true correlation plus `operational_id`),
+  `/history`, `/history/catalog`, `/process/image`.
+- **Regression tests:** `tests/test_operational_boundary.py`, 11 tests. They crawl every operational
+  route before and after the first symptom. They also show that the operational event stream equals a
+  fault-free run until the first symptom, and that evaluator routes retain the true cause.
+- **Contract test:** `tests/test_contract.py::test_operational_boundary_rules_match_contract`. The
+  metadata-tag test now checks both directions.
+
+### Changed
+
+- **Routes moved under `/api/benchmark/`:**
+  - `/api/coupling` → `/api/benchmark/coupling`;
+  - `/api/process/internal-states` → `/api/benchmark/process/internal-states`;
+  - `/api/scenarios*` → `/api/benchmark/scenarios*`;
+  - `/api/export/*` → `/api/benchmark/export/*`;
+  - `/api/ui/snapshot` → `/api/benchmark/ui/snapshot`.
+- **Operational responses:**
+  - `/api/simulation` no longer has a `scenario` block;
+  - `/api/simulation/manifest` returns the operational manifest;
+  - `/api/events` returns the operational stream with `OE-` ids.
+- **Web UI (benchmark console):** reads its truth-bearing data from `/api/benchmark/*`; its behaviour is
+  unchanged.
+- **Metadata tags (no effect on simulation):**
+  - `UtilitiesModule` tags utility status, availability, capacity fields, health, and steam
+    utilization as `model_internal`;
+  - `InventoryModule` tags the `*_deviation` properties `unobservable` (A1) and no longer tags
+    `supply_availability`, which is a function of released stock and is the source of the
+    supply-lost alarms.
+- **Read model:** `EnterpriseView` takes a status function, so hierarchy roll-ups can use the
+  operational status.
+- **Contract, invariants and audit:**
+  - contract 0.2.0: operational boundary section, route table, utility and storage observability;
+  - invariants I13 and I14 (formerly target invariants T1 and T2) now hold;
+  - the audit classifies G1–G16 and records decisions D1–D5 and the power-demand investigation (A4:
+    a legitimate coupling, not a leak).
+- **Documentation:** API, limitations, learning guide, master specification, README and the
+  generated reference tables were updated for the boundary.
+
+### Validation
+
+- **Test suite:** `python -m pytest`, 104 passed.
+- **Behaviour unchanged:** the SCN-COOL-001 fingerprint is identical (148 internal events, 166 trend
+  series, final TEP states, run id `RUN-SCN-COOL-001-18472-4f2f4816dd`). The regenerated demo trace
+  and entity table are byte-identical.
+- **Documentation check:** `python scripts/check_docs.py`: OK.
+
+### Known limitations
+
+- **No authentication:** the boundary is the route namespace. A system under test must be given the
+  operational routes only.
+- **Decisions D1–D5 to confirm:**
+  - utility meter readings are noise-free functions of capability;
+  - power utilization stays operational;
+  - blocked spare parts stay operational;
+  - `POST /api/simulation/create` accepts inline faults;
+  - the UI is the benchmark console.
+- **Open ambiguities:** A2, A5–A8 and A10–A12 remain; none exposes ground truth operationally.
+
+## [contract 0.1.0]: canonical simulator contract (commit `2c75eaa`, merged in `d756482`)
 
 Documentation and contract release. **Simulator behaviour is unchanged** (simulator version 1.0.0).
 Introduces contract version 0.1.0 (draft).

@@ -259,7 +259,7 @@ that does each step.
     which sets status `RUNNING` and publishes `SIMULATION_STARTED` with a lifecycle id `LC-…`, and sets
     `runner.running = True`. From then on, every 20 ms the runner computes how many seconds are due
     (elapsed wall time × speed, capped at 2000) and calls `engine.step(n)` under the lock.
-19. **UI polling.** The UI polls `GET /api/ui/snapshot` about once per second and renders what it
+19. **UI polling.** The UI polls `GET /api/benchmark/ui/snapshot` about once per second and renders what it
     returns. It holds no simulation state.
 
 ```mermaid
@@ -923,61 +923,50 @@ rule, or the fault engine.
 * **Only the first cause is kept.** With overlapping faults, the registry keeps the first cause found
   (`first`, `set_if_absent`).
 
-### Interfaces: what is exposed where
+### Interfaces: the operational boundary
 
-**Benchmark-only (intended):**
+The API has two route namespaces.
 
-| Route | Returns |
-|---|---|
-| `/api/benchmark/faults/catalog` | the 34 fault types |
-| `/api/benchmark/faults` (GET, POST) and `/{id}` (GET) | fault records: create, list, status |
-| `/api/benchmark/faults/{id}/schedule`, `/start`, `/stop`, `/reset` | fault control |
-| `/api/benchmark/ground-truth` | FAULT_* events, `fault_effects` channels, the causal registry, active sensor overlays |
+**Operational routes (`/api/*` outside `/api/benchmark/*`).** Every response is built by
+`api/operational.py` and carries only what a plant could observe:
 
-**Operational routes (`/api/*`)**, what they separate correctly:
-
-* **Fault control:** only through `BenchmarkFaultAPI` (`test_fault_injection_is_benchmark_only`).
-* **FAULT_* events:** excluded from `/api/events` (`include_benchmark=False`) and from the UI snapshot.
-* **Measurement routes:** return *transmitted* values.
-
-**What they still leak.** Each item is verified in code and numbered G1–G12 in
-[benchmark limitations](11_limitations/benchmark_limitations.md):
-
-| # | Route / field | What an observer learns |
-|---|---|---|
-| G1 | `correlation_id` / `causation_id` on every `/api/events` event | the fault id itself, i.e. the answer to a diagnosis task |
-| G2 | `/api/entities/{id}`, `/api/equipment/{id}`, `/api/maintenance`, `/api/ui/snapshot` → `health`, `efficiency`, `available_flow` | true asset condition (tagged `model_internal`, but nothing filters that tag) |
-| G3 | `/api/process/image`, `/api/coupling`, `/api/ui/snapshot` → `boundary` and `boundary_nominal` | `VRNG(10)` = 382 of 1000 points straight at reactor cooling |
-| G4 | `/api/history?series=TRUE:XMEAS(n)` | true minus transmitted reveals sensor faults |
-| G5 | `/api/inventory`, `/api/entities/SU-*` → `feed_*_deviation` | raw-material deviation (should be tagged `unobservable`; is not) |
-| G6 | `/api/export/json`, `/api/export/csv` | everything, including FAULT_* events |
-| G7 | `/api/scenarios`, `/api/scenarios/{id}`, `/api/scenarios/current` | the scenario's fault definitions |
-| G8 | `/api/process/internal-states` | the 50 TEP states |
-| G9 | `/api/coupling` relation values | capacity fractions and `fault.*` inputs |
-| G10 | the UI | shows G2 and G3, and has the Fault Injection tab in the same page |
-| G11 | `/api/simulation/manifest` | the fault list and `active_faults` in the run manifest |
-| G12 | `/api/simulation`, `/api/ui/snapshot` → `scenario.description` | the scenario text, which names the hidden fault in the demo |
-
-`CanonicalState.snapshot(include_truth=False)` would drop `xmeas_true`, `idv` and the `faults`
-collection, but **no route calls it with `False`**.
-
-### What must eventually be hidden from an agent
-
-Everything in G1–G12, plus the benchmark routes themselves. Concretely, an agent-facing view should
-contain only:
-
-* transmitted XMEAS, XMV, setpoints, modes and loop table;
+* transmitted XMEAS, XMV, setpoints, modes and the loop table;
 * alarms;
-* equipment `status`, `is_running`, `vibration`, `run_hours`;
-* utility meter readings (flow, temperature, pressure);
+* equipment `status` (with DEGRADED reported as RUNNING), `is_running`, `vibration`, `run_hours`;
+* utility meter readings (flow, demand, pressure, temperature, voltage);
 * work orders, orders, lots and lab results;
-* events without fault-derived correlation.
+* a manifest without scenario identity or seeds;
+* an **operational event stream**:
+  * no `FAULT_*`, `UTILITY_STATE_CHANGED` or `EQUIPMENT_DEGRADED`;
+  * correlation rebuilt from operational causation only;
+  * ids renumbered `OE-n`, so hidden events leave no gaps.
 
-This is a recommendation, not implemented ([future extensions](11_limitations/future_extensions.md)).
+**Benchmark routes (`/api/benchmark/*`).** Fault control, `/api/benchmark/ground-truth`, and evaluator
+views of the same data with the truth intact:
 
-**Before moving on, understand that:** today the separation is enforced for fault *control* and fault
-*events* only. The rest of the truth is labelled, not hidden. The current API is a benchmark-operator
-and development interface, not a system-under-test interface.
+* `/api/benchmark/manifest` and `/simulation`;
+* `/events`: true correlation, plus the `operational_id` of each event;
+* `/entities/{id}`, `/process/image`, `/history`, `/coupling`;
+* scenario files and exports;
+* the web UI's snapshot. The UI is the benchmark console.
+
+**How the leaks were closed.** Before contract 0.2.0, operational routes leaked the truth in the ways
+numbered G1–G16 in [benchmark limitations](11_limitations/benchmark_limitations.md). Four examples:
+
+* the fault id in `correlation_id`;
+* `health`, capability and boundary values;
+* the scenario name, run id and seed;
+* utility and asset DEGRADED status 10–18 minutes before the first symptom.
+
+**What "cannot recover the cause" means, concretely.** Until the vibration alarm at 01:20:33, the
+operational event stream of the demo is identical, ids included, to that of the same scenario without
+the fault (`test_operational_stream_matches_fault_free_run_until_the_first_symptom`). What differs
+before then are legitimate instrument readings, such as vibration and CW header pressure. Reading
+those is the diagnosis task.
+
+**Before moving on, understand that:** ground truth still exists and is unchanged inside the
+simulator; it is only kept off the operational routes. There is no authentication, so the route
+namespace is the boundary: a system under test must be given the operational routes only.
 
 ---
 
@@ -1144,7 +1133,7 @@ build)*. Change any of the three and you have a different experiment.
 
 ## Level 14: How do we know it is correct?
 
-83 tests, about 55 s: `python -m pytest`. The full catalog, with what each test proves and does not
+104 tests, about 80 s: `python -m pytest`. The full catalog, with what each test proves and does not
 prove, is [test_catalog.md](09_validation/test_catalog.md). By category:
 
 | Category | Main tests | What it proves | What it does NOT prove |
@@ -1182,7 +1171,7 @@ Full lists: [known limitations](11_limitations/known_limitations.md) (L1–L18),
 | **Boundary timing** | `SZERO` supply-temperature and stream-4 changes act at the next random-walk knot (0.1–1.7 h depending on the walk). | Cooling-tower faults take effect with a delay that is a TEP artefact, not a plant property. |
 | **Backend differences** | The Python backend is statistically, not bit-for-bit, equivalent. | Use Fortran for any result you report. `run.py` warns on fallback. |
 | **Causal labels** | Heuristic: 0.5 % deviation from the t = 0 baseline, first cause wins, hand-curated `process_influences`. | Correlation ids are good for single-fault scoring, and unreliable with overlapping faults or near-baseline effects. |
-| **Observability** | The truth/observable split is incomplete (G1–G12). | Do not connect an agent to the current API for a diagnosis benchmark. |
+| **Observability** | The operational boundary is route separation without authentication. Utility meter readings are noise-free functions of capability. | Give a system under test only the operational routes; expect instrument readings to be cleaner than in a real plant. |
 | **Unmodelled phenomena** | Operator behaviour (except scripts), communication delays and OT networks, historian compression, start-up and grade changes, economics, weather, multi-site interactions. | Out of scope by design. |
 | **Engineering** | Tested on Windows with Python 3.11 only. The Dockerfile is untested. The event log caps at 250,000 events and the trend buffer at 20,000 samples in memory. Temp library copies are not deleted. | Long or parallel runs need exports and housekeeping. |
 
@@ -1382,8 +1371,9 @@ flowchart TB
     made 900 s earlier, and lots are decided 900 s after closing (0 % failed → released, ≤ 25 % →
     quarantine, otherwise rejected).
 17. **Inventory consumption uses true feed flows**, the one enterprise reader of `xmeas_true`.
-18. **Correlation ids are ground truth, and they are exposed.** `F-COOL-001` rides on operational
-    events. The truth/observable split is enforced only for fault control and FAULT_* events.
+18. **Correlation ids are ground truth, kept off the operational routes.** `F-COOL-001` rides on the
+    canonical events (`/api/benchmark/events`). The operational stream (`/api/events`) rebuilds
+    correlation from operational causation and renumbers ids, so hidden events leave no trace.
 19. **Determinism is per (scenario, configuration, library build)**: named PCG64 streams, a derived
     TEP seed, zeroed common blocks, float32 controller constants, and `LC-` ids for lifecycle events.
 20. **Use the Fortran backend for results.** The Python backend is statistically, not bit-for-bit,
@@ -1409,9 +1399,10 @@ Each item names the tempting wrong model and states what the implementation actu
    1000. Similarly, a cascade master's "output" is another loop's setpoint, not a valve.
 
 4. **Fault truth vs observable event.** *Wrong model:* `FAULT_STARTED` or the pump's `health` tell an
-   operator what happened. *Actually:* a real operator sees vibration rising, a utility going DEGRADED,
+   operator what happened. *Actually:* a real operator sees vibration rising, cooling-water header pressure falling,
    a valve saturating and temperature alarms. `health`, `fault_effects` and FAULT_* events are
-   benchmark truth. Some of it still leaks through operational routes (G1–G12).
+   benchmark truth. Even the utility and asset DEGRADED statuses are truth-derived, which is why the
+   operational routes do not report them.
 
 5. **Causal graph vs execution graph.** *Wrong model:* the variable graph shows what happens, and its
    shortest path is the mechanism. *Actually:* the graph shows which mechanisms exist, with no time or

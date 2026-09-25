@@ -102,8 +102,8 @@ can affect TEP, and whether it is operational information or benchmark ground tr
 
 * **Why it exists:** future layers (UNS, historian, knowledge graph, i3X, MCP, agents) must consume the
   simulator without changing what it means. None of these layers is implemented here.
-* **What it does not do:** it does not change or constrain simulator behaviour, and it does not hide
-  ground truth. It documents where ground truth is currently exposed (G1–G12).
+* **What it does not do:** it does not change or constrain simulator behaviour. It defines the
+  operational information boundary that `/api/*` enforces (ground truth stays under `/api/benchmark/*`).
 * **Where it is:**
   * [docs/CANONICAL_SIMULATOR_CONTRACT.md](docs/CANONICAL_SIMULATOR_CONTRACT.md): the contract;
   * [docs/CANONICAL_SIMULATOR_INVARIANTS.md](docs/CANONICAL_SIMULATOR_INVARIANTS.md): the invariants;
@@ -124,11 +124,14 @@ Contract version 0.1.0 (draft) describes simulator version 1.0.0.
 * Same code + TEP library + seed + scenario + configuration ⇒ identical trajectories and event trace
   (tested on the first 2 h of the demo). Not guaranteed across compiled libraries or platforms. Every run has a manifest (run id, seeds, TEP source/library hashes,
   simulator version, configuration hash).
-* Fault *control* is only reachable via `/api/benchmark/*` (`BenchmarkFaultAPI`), and `/api/events`
-  never returns fault events. **Other ground truth is still exposed on operational routes**
-  (correlation ids, equipment health, boundary values, true measurements in trends, exports, scenario
-  files); see [benchmark limitations](docs/11_limitations/benchmark_limitations.md). Do not connect
-  a system under test to the current API.
+* **Operational routes expose no ground truth.** Everything under `/api/*` outside `/api/benchmark/*`
+  passes through the operational boundary (`api/operational.py`). No fault identity, scenario identity,
+  seeds, correlation to faults, health, capability, utility status, boundary values or true
+  measurements reach it, and its event stream has no gaps where hidden events occurred (tested in
+  `tests/test_operational_boundary.py`). Fault control, ground truth, evaluator views and the web UI
+  (the benchmark console) are under `/api/benchmark/*`; see
+  [benchmark limitations](docs/11_limitations/benchmark_limitations.md). There is no authentication:
+  route separation is the boundary, so a system under test must be given the operational routes only.
 
 ## Known limitations
 

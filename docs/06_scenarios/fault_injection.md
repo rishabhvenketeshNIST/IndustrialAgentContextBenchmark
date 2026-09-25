@@ -76,21 +76,23 @@ A fault never touches a consequence directly. The type determines the entry poin
 Ground truth is what the benchmark knows about **causes** that plant personnel could not directly
 observe.
 
-| Item | Where | Exposed by |
+| Item | Where | Available on |
 |---|---|---|
-| Fault definitions, status, intensity, history | `collections["faults"]` | `/api/benchmark/faults*` only |
-| Fault lifecycle events (FAULT_*) | event log, `visibility=benchmark` | `/api/benchmark/ground-truth` only; excluded from `/api/events` |
+| Fault definitions, status, intensity, history | `collections["faults"]` | `/api/benchmark/faults*`, `/api/benchmark/manifest` |
+| Fault lifecycle events (FAULT_*) | event log, `visibility=benchmark` | `/api/benchmark/ground-truth`, `/api/benchmark/events?include_benchmark=true` |
 | Cause channels | `state.fault_effects` | `/api/benchmark/ground-truth` |
-| Causal registry | `state.causal` | `/api/benchmark/ground-truth`; **and indirectly** via `correlation_id`/`causation_id` on operational events |
+| Causal registry, fault-derived correlation | `state.causal`, event `correlation_id`/`causation_id` | `/api/benchmark/ground-truth`, `/api/benchmark/events` |
 | Sensor overlays | `Instrumentation.overlays` | `/api/benchmark/ground-truth` |
-| True XMEAS where it differs from transmitted | `process.xmeas_true` | **also** `/api/history` (`TRUE:XMEAS(n)`) and exports |
-| IDV flags | `process.idv` | not returned by any operational route (the operational process image omits them) |
-| Health, efficiency, boundary values, lot deviations | entity properties, `process.boundary` | **also** `/api/entities/*`, `/api/process/image`, `/api/coupling` |
-| Everything above, in bulk | export bundle | **also** `/api/export/json` and `/api/export/csv`, which include all events (FAULT_* included) and the `faults` list |
-| Fault definitions of the running scenario | `SimulatorService.current_scenario_with_faults` | **also** `/api/scenarios/current` |
+| True XMEAS | `process.xmeas_true` | `/api/benchmark/history` (`TRUE:XMEAS(n)`), `/api/benchmark/process/image`, exports |
+| IDV flags | `process.idv` | `/api/benchmark/process/image` |
+| Health, efficiency, capability, utility status, boundary values, lot deviations | entity properties, `process.boundary` | `/api/benchmark/entities/*`, `/api/benchmark/process/image`, `/api/benchmark/coupling` |
+| Everything above, in bulk | export bundle | `/api/benchmark/export/json`, `/api/benchmark/export/csv` |
+| Fault definitions of the running scenario | `SimulatorService.current_scenario_with_faults` | `/api/benchmark/scenarios/current` |
 
-The rows marked **also** are where ground truth reaches routes outside `/api/benchmark` today. See
-[benchmark limitations](../11_limitations/benchmark_limitations.md) for the full analysis.
+None of these reaches the operational routes (`/api/*` outside `/api/benchmark/*`); the operational
+boundary (`api/operational.py`) withholds or rebuilds them. See
+[benchmark limitations](../11_limitations/benchmark_limitations.md) and
+[canonical contract §20](../CANONICAL_SIMULATOR_CONTRACT.md#20-ground-truth).
 
 ## API (benchmark only)
 

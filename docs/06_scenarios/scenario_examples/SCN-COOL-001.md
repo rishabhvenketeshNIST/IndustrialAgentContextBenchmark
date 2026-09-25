@@ -77,8 +77,9 @@ flowchart TB
   high-temperature excursion itself. The samples representing 01:30 and 01:45 passed.
 * **The outcome depends on maintenance timing.** With dispatch blocked, the same fault trips the plant
   on reactor pressure at 01:54:09 ([intervention and recovery](../intervention_and_recovery.md)).
-* **Every consequence event carries correlation `F-COOL-001`.** That is ground truth, useful for
-  scoring and leaked to operational consumers today.
+* **Every consequence event carries correlation `F-COOL-001` in the canonical event log.** That is
+  ground truth for scoring, available under `/api/benchmark/events`. The operational stream
+  (`/api/events`) replaces it with operational causation only.
 
 Tests that assert this chain: `test_demo_scenario_causal_chain` (event order, correlation ids, T > 130
 °C, XMV(10) ≥ 99.9 %, no shutdown, recovery state, work order completed, quality failure, lot

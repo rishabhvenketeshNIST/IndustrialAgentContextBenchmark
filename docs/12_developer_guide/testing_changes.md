@@ -3,7 +3,7 @@
 ## Always
 
 ```bash
-python -m pytest                          # 83 tests, ~1 min, needs the Fortran library for full coverage
+python -m pytest                          # 104 tests, ~1.5 min, needs the Fortran library for full coverage
 python scripts/check_docs.py              # doc links and source references still resolve
 ```
 

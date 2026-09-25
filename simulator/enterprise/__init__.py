@@ -4,7 +4,7 @@ Generic entity/property access - no variable-specific accessors.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ..common import to_jsonable
 from ..isa95 import EquipmentLevel
@@ -15,8 +15,12 @@ _PRIO = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
 
 
 class EnterpriseView:
-    def __init__(self, engine) -> None:
+    """``status_of(entity_id)`` returns the status used for roll-ups. The default is the canonical
+    status; the operational API passes the operational status (api/operational.py)."""
+
+    def __init__(self, engine, status_of: Optional[Callable[[str], Any]] = None) -> None:
         self.e = engine
+        self.status_of = status_of or (lambda eid: engine.state.get(eid, "status"))
 
     # ------------------------------------------------------------------ status rollups
     def _alarm_index(self) -> Dict[str, List[dict]]:
@@ -28,19 +32,19 @@ class EnterpriseView:
         return idx
 
     def element_status(self, element_id: str, alarms: Optional[Dict[str, List[dict]]] = None) -> dict:
-        st, h = self.e.state, self.e.hierarchy
+        h = self.e.hierarchy
         alarms = alarms if alarms is not None else self._alarm_index()
         ids = [element_id] + [d.id for d in h.descendants(element_id)]
         worst, worst_status, n_alarm, top_prio = 0, "OK", 0, None
         for i in ids:
-            s = st.get(i, "status")
+            s = self.status_of(i)
             if isinstance(s, str) and _SEVERITY.get(s, 0) > worst:
                 worst, worst_status = _SEVERITY[s], s
             for a in alarms.get(i, []):
                 n_alarm += 1
                 if top_prio is None or _PRIO[a["priority"]] > _PRIO[top_prio]:
                     top_prio = a["priority"]
-        own = st.get(element_id, "status")
+        own = self.status_of(element_id)
         return {"status": own if isinstance(own, str) else ("ALARM" if n_alarm and worst < 2 else worst_status),
                 "rollup_status": worst_status if worst else ("ALARM" if n_alarm else "OK"),
                 "active_alarms": n_alarm, "top_alarm_priority": top_prio}
