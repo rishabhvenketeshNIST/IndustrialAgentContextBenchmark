@@ -33,11 +33,18 @@ the projection is wrong.
 ## P2. One identity
 
 Every projection identifies things by the canonical identity `<entity_type>:<native_id>`
-([context model §4](CONTEXT_MODEL.md#4-entity-model-and-identity)).
+([context model §4](CONTEXT_MODEL.md#4-entity-model-and-identity)). The rule is frozen (decision
+U-05).
 
 * **Lossless mapping:** a projection may encode the identity differently (a topic path, an IRI, a
   tag), but the mapping must be lossless and documented.
 * **Aliases:** loop numbers, instrument tags and bound properties are aliases, never separate things.
+* **Carry it verbatim:** carry the canonical id itself (e.g. a `canonical_id` attribute on a UNS
+  payload, a historian tag or a KG node). Escape characters such as `(` `)` for the transport, never in
+  the id.
+* **Run scope:** record and event identities are unique only within one run. A projection starts a new
+  run scope on `SIMULATION_RESET`, and on a new `SIMULATION_STARTED` after a reset or create; it must
+  not use the evaluator-only run id for this (R-01).
 
 ## P3. Same semantics
 
@@ -64,9 +71,9 @@ same boundary functions (`api/operational.py`).
 
 | Projection | Carries | Must not |
 |---|---|---|
-| UNS | the current value of operational observations and states, addressed by canonical identity and hierarchy (`contains`) | carry history or evaluator-only values |
+| UNS | the current value of operational observations and states, addressed by canonical identity and hierarchy (`contains`); lifecycle events as run-state changes | carry history or evaluator-only values; publish a utility status unless it is a documented derivation from observable inputs only (U-02) |
 | Historian | operational observations over time, with the timestamp semantics of the context model (`step_state` sampled at step boundaries; `analyzer_sample` values at their update times; record and event times as stored) | invent change timestamps the simulator does not have; interpolate across analyzer samples as if continuous without saying so |
-| KG | canonical entities and operational relationships (hierarchy, process variables, utilities, material, production, quality, maintenance, alarms, operational event causation) | contain the evaluator-only causal relationships (fault targets, correlation to faults, coupling equations and values, process influences) |
+| KG | canonical entities and operational relationships (hierarchy, process variables, utility topology, material including `yields_material`, production, quality, maintenance, alarms, operational event causation) | contain the evaluator-only causal relationships (fault targets, correlation to faults, coupling equations and values, process influences), or attach health or status to topology edges (U-04); create customer or supplier entities (U-06) |
 
 ## P6. Time
 

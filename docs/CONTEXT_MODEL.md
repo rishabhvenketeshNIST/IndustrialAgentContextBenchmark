@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Context model version** | 0.1.0 (draft) |
+| **Context model version** | 0.2.0 (draft; decisions U-01 to U-07 resolved) |
 | **Describes** | simulator 1.0.0, canonical contract 0.2.0 |
 | **Machine-readable definition** | `contract/context_model.yaml` (checked by `tests/test_context_model.py`) |
 | **ISA-95 mapping** | [ISA95_SIMULATOR_MAPPING.md](ISA95_SIMULATOR_MAPPING.md) |
@@ -112,8 +112,22 @@ ENT-ACME  Enterprise  ACME Manufacturing
 ## 4. Entity model and identity
 
 **Canonical identity** is `<entity_type>:<native_id>`, where the native id is the simulator's own,
-unchanged. The type qualifier is required: production orders (`PO-2026-0201`) and purchase orders
-(`PO-00001`) share a prefix. Aliases resolve to one canonical id:
+unchanged. The rule is **frozen** (decision U-05).
+
+* **Type qualifier:** it is required, because production orders (`PO-2026-0201`) and purchase orders
+  (`PO-00001`) share a prefix.
+* **Unambiguous split:** native ids never contain `:`, so the first `:` splits a canonical id.
+* **References:** every relationship reference uses canonical ids.
+* **Uniqueness scope:**
+  * *static* identities (hierarchy elements, utilities, materials, products, process variables, loops,
+    quality tests) are stable across runs;
+  * *run-scoped* identities (records and events) are unique within one run, because the simulator
+    restarts their numbering on create and reset (see R-01 in the
+    [decisions](CONTEXT_MODEL_DECISIONS.md)).
+* **Projections:** UNS topics, historian tags and KG IRIs carry the canonical id verbatim and must be
+  reversible to it.
+
+Aliases resolve to one canonical id:
 
 * a control loop's number (18) and tag (TC-RX) → `control_module:CM-TIC-RX`;
 * an instrument tag (TI-09) → `measurement:XMEAS(9)`;
@@ -160,7 +174,7 @@ source, timestamp semantics and an observability class (`contract/context_model.
 | equipment_status | maintainable asset | `status` (DEGRADED reported as RUNNING) | derived_operational |
 | equipment_condition | maintainable asset | `health`, `efficiency`, `available_flow`, … | evaluator_only |
 | utility_meter, utility_utilization | utility | flow, pressure, temperature, voltage; utilization (not steam) | operational |
-| utility_state | utility | status, availability, capacity fraction, health | evaluator_only |
+| utility_state | utility | status, availability, capacity fraction, health | evaluator_only (U-02: a future *derived* operational status may use only observable inputs) |
 | inventory_quantity | storage unit | quantity, level, supply availability, status | operational |
 | material_composition | storage unit | feed impurity and deviations | evaluator_only |
 | quality_result, lot_status | sample, lot | QS-00009 FAIL on G_MASS_PCT; PL-0003 QUARANTINE | operational |
@@ -205,6 +219,17 @@ The event types are the 46 of the canonical contract. The context model does not
 
 Operational event ids are safe to expose: they carry no information about withheld events.
 
+**Lifecycle events** (decision U-07) are temporal operational events. They all target
+`site:SITE-TE`; the simulator has no run entity.
+
+| Event | Id | Transition | Operational payload |
+|---|---|---|---|
+| SIMULATION_STARTED | `LC-` | READY → RUNNING | `duration_seconds` (run id, scenario id and seed removed) |
+| SIMULATION_PAUSED | `LC-` | RUNNING → PAUSED | `time_s` |
+| SIMULATION_RESUMED | `LC-` | PAUSED → RUNNING | `time_s` |
+| SIMULATION_RESET | `LC-` | any → READY; a new run begins and run-scoped ids restart | none (scenario id removed) |
+| SIMULATION_COMPLETED | `OE-` | RUNNING → COMPLETED | `simulated_seconds` (run id removed) |
+
 ## 8. Relationships
 
 Relationships are taken from where the simulator defines them. Each one has a source and an
@@ -216,6 +241,7 @@ observability class (`contract/context_model.yaml`, `relationships`). They are n
 | process variables | measures, actuates, manipulates, controls, uses_measurement, disturbance_acts_on | tep_mapping.yaml, control_scheme.py | operational (the live disturbance state is evaluator-only) |
 | utilities | supplied_by, serves, supports_utility | utilities.yaml, coupling.yaml structure | operational |
 | material | feeds, stores, located_in, lot_of, bill_of_materials, purchase_for | site.yaml, materials.yaml, records | operational |
+| product ↔ material | yields_material (product → material, 1 → 1; a material is yielded by 0..n products); lot_material (derived) | production.yaml `products.<id>.material` | operational master data / derived_operational (U-03) |
 | production | produced_for, orders_product, produced_on | records, production.yaml | operational |
 | quality | sampled_from, sample_of, tested_against | sample records | operational |
 | maintenance | work_order_for, assigned_to, requires_part, asset_role_of, redundant_with | records, equipment.yaml | operational |
@@ -224,8 +250,9 @@ observability class (`contract/context_model.yaml`, `relationships`). They are n
 
 **Observable relationship vs causal truth.**
 
-* **Design structure is operational.** "UT-CW-REACTOR is supplied by WC-CW, which contains pumps
-  P-101A/B" is plant design knowledge, the kind of fact found on a P&ID, and it is operational.
+* **Asset/service topology is operational** (decision U-04). "UT-CW-REACTOR is supplied by WC-CW,
+  whose pumps P-101A/B provide it (`supports_utility`)" is plant design knowledge, the kind of fact
+  found on a P&ID. The topology relationship carries no health, status or fault attribute.
 * **Mechanism and cause are evaluator-only.** "The reactor CW capacity equals the sum of the pumps'
   available flow" (a coupling equation with hidden values), and "this alarm was caused by fault
   F-COOL-001", are evaluator-only.

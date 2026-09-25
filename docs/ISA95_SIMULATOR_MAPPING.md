@@ -90,7 +90,7 @@ table gives the plausible ISA-95 readings, the one selected, and why.
 | production orders (PO-2026-*) | `production_orders` collection; scenario `production_orders` | Production (Operations) Request; Job Order (Part 4) | MODELING_CHOICE | quantity, product, planned window, priority and customer, with a state machine. They carry no segment requirements (decision CM-09). |
 | scheduling (release, block, single-line sequence) | `SchedulingModule` | Production (Operations) Schedule | PARTIAL | planned windows and release rules; no schedule object |
 | produced / accepted / rejected kg, lots, status history | order record, `state.production` | Production (Operations) Response / Performance | DERIVED | derived from metering and QC |
-| PROD-GH-M1 | `configs/production.yaml` products | Product Definition | PARTIAL | bill of materials only (kg/kg); no product segments or parameters |
+| PROD-GH-M1 | `configs/production.yaml` products | Product Definition | PARTIAL | bill of materials (kg/kg) and quality specification; yields exactly one Material Definition, MAT-GH (`yields_material`, decision U-03); no product segments or parameters |
 | process segments, operations definitions, work masters | — | Process Segment / Operations Definition / Work Master | NOT_REPRESENTED | the process is one continuous TEP operation |
 | production line state and rate | `state.production`, line `PU-STRIPPER` | Production performance (actual) | DERIVED | from the transmitted XMEAS(17) |
 | nominal rate; hidden capability | `configs/production.yaml`, coupling | Production Capability | PARTIAL | nominal rate only; the real capability is evaluator-only |
@@ -103,7 +103,7 @@ table gives the plausible ISA-95 readings, the one selected, and why.
 | MAT-A, MAT-D, MAT-E, MAT-AC, MAT-GH | entities of kind `material` | Material Definition | DIRECT | name, unit, attributes, specification |
 | material `category` (raw_material, finished_good) | materials.yaml | Material Class | PARTIAL | a category string; no class objects |
 | material lots (LOT-*) | `material_lots` | Material Lot | DIRECT | quantity, location, supplier, certificate attributes, quality status |
-| production lots (PL-*) | `production_lots` | Material Lot (of the product) | MODELING_CHOICE | a separate record type with the product id `PROD-GH-M1`, not the material id `MAT-GH` (decision CM-10) |
+| production lots (PL-*) | `production_lots` | Material Lot (of the product) | MODELING_CHOICE | a separate record type carrying the product id `PROD-GH-M1`; its material is `MAT-GH` through `yields_material` (decisions CM-10 and U-03) |
 | sublots | — | Material Sublot | NOT_REPRESENTED | |
 | storage and inventory quantities | storage units, `InventoryModule` | inventory (Part 3 inventory operations); lot location | COMPOSITE | stock is the sum of lots at a location |
 | MATERIAL_CONSUMED, MATERIAL_RECEIVED, INVENTORY_MOVED; shipments | events, `shipments` | material consumed/produced actuals; material transfers | COMPOSITE | consumption posted every 900 s; FIFO lots |

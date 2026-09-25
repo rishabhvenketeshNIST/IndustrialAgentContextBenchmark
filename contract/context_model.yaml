@@ -16,8 +16,8 @@
 #   internal               - exists in the simulator but is served by no route
 
 context_model:
-  version: 0.1.0
-  status: draft
+  version: 0.2.0
+  status: draft (open decisions U-01..U-07 resolved; see docs/CONTEXT_MODEL_DECISIONS.md)
   describes_simulator_version: 1.0.0
   canonical_contract_version: 0.2.0
 
@@ -31,11 +31,22 @@ vocabularies:
 # ------------------------------------------------------------------------------------------------
 identity:
   canonical_id: "<entity_type>:<native_id>"
+  status: frozen                      # decision U-05
+  entity_type_pattern: "^[a-z][a-z_]*$"
+  separator: ":"                      # native ids never contain ':' (tested), so the first ':' splits the id
   rule: >-
     The native id is the simulator's own identifier, unchanged. Native ids are unique only within a
     type (production orders PO-2026-nnnn and purchase orders PO-nnnnn share a prefix), so the canonical
-    id is always type-qualified. Aliases (loop number, instrument tag, XMEAS index) resolve to one
-    canonical id.
+    id is always type-qualified, and every relationship reference uses canonical ids. Aliases (loop
+    number, loop tag, instrument tag, bound property) resolve to one canonical id and are never
+    identities themselves.
+  uniqueness_scope:
+    static: "hierarchy elements, utilities, materials, products, measurements, manipulated variables, disturbances, control loops, quality tests: unique and stable across runs of the same configuration"
+    run: "records (lots, orders, work orders, samples, purchase orders, shipments, alarms state) and events: unique within one run; native ids restart when a simulation is created or reset"
+  projections: >-
+    UNS topics, historian tags and KG IRIs must carry the canonical id verbatim (e.g. a canonical_id
+    attribute) and any path or IRI form must be reversible to it. Characters such as '(' ')' in native
+    ids (XMEAS(9)) are escaped by the transport, never altered in the canonical id.
 
 entity_types:
   # ---- ISA-95 equipment hierarchy: selected from the simulator hierarchy (configs/site.yaml) --------
@@ -153,6 +164,17 @@ events:
               note: "integer simulation seconds; ISO timestamp = simulation_start + simulation_time; pre-step events carry t, post-step and TEP-derived events t+1"}
   entity: "target (entity or record id); source = publishing module"
   relationships: {operational: "causation_id / correlation_id rebuilt from operational causation", evaluator_only: "canonical correlation to faults"}
+  lifecycle:                          # decision U-07: temporal operational events, not ground truth
+    entity: site                      # the simulator targets lifecycle events at SITE-TE; there is no run entity
+    types:
+      SIMULATION_STARTED:   {id: LC, transition: "READY -> RUNNING", operational_payload: [duration_seconds], redacted: [run_id, scenario_id, seed]}
+      SIMULATION_PAUSED:    {id: LC, transition: "RUNNING -> PAUSED", operational_payload: [time_s]}
+      SIMULATION_RESUMED:   {id: LC, transition: "PAUSED -> RUNNING (READY -> RUNNING publishes SIMULATION_STARTED instead)", operational_payload: [time_s]}
+      SIMULATION_RESET:     {id: LC, transition: "any -> READY; a new run begins, record and event ids restart", operational_payload: [], redacted: [scenario_id],
+                             note: "published as the first event of the new run"}
+      SIMULATION_COMPLETED: {id: OE, transition: "RUNNING -> COMPLETED", operational_payload: [simulated_seconds], redacted: [run_id]}
+    timestamp: "event_time; LC events reflect when the user acted (wall-clock-dependent), so they use their own id sequence and never shift OE ids"
+    domain_state_transitions: "equipment, utility (evaluator_only), production, order, lot, work order, alarm and material events: see contract/canonical_contract.yaml events.records_change_of"
 
 # ------------------------------------------------------------------------------------------------
 # Relationships (only those the simulator supports)
@@ -166,8 +188,8 @@ relationships:
   uses_measurement:      {from: control_loop, to: measurement, source: "simulator/tep/control_scheme.py (PV)", observability: operational}
   supplied_by:           {from: utility, to: work_center, source: "configs/utilities.yaml supplied_by", observability: operational}
   serves:                {from: utility, to: [equipment_module, work_center], source: "configs/utilities.yaml serves", observability: operational}
-  supports_utility:      {from: work_unit, to: utility, source: "configs/coupling.yaml utility_supply inputs (equipment structure only)", observability: operational,
-                          note: "the structural fact that pumps/boiler/transformer supply a service is design knowledge; the relation's values and equations are evaluator_only"}
+  supports_utility:      {from: work_unit, to: utility, source: "configs/coupling.yaml utility_supply inputs (equipment structure only)", observability: operational, category: topology,
+                          note: "decision U-04: asset/service topology (which equipment provides a utility) is operational; it carries no health, capability, status or fault information, which stay evaluator_only"}
   feeds:                 {from: storage_unit, to: equipment_module, source: "configs/site.yaml attributes.feeds", observability: operational}
   stores:                {from: storage_unit, to: material, source: "configs/materials.yaml storage; configs/warehouse.yaml", observability: operational}
   located_in:            {from: [material_lot, production_lot, spare_part], to: storage_unit, source: "record location", observability: operational}
@@ -175,6 +197,10 @@ relationships:
   produced_for:          {from: production_lot, to: production_order, source: "production lot order_id", observability: operational}
   orders_product:        {from: production_order, to: product, source: "production order product_id", observability: operational}
   bill_of_materials:     {from: product, to: material, source: "configs/production.yaml bill_of_materials", observability: operational}
+  yields_material:       {from: product, to: material, source: "configs/production.yaml products.<id>.material", observability: operational, derivation: configuration,
+                          cardinality: {product_to_material: "exactly 1", material_to_product: "0..n"}, served_by_route_today: false,
+                          note: "decision U-03: a Product Definition (what is made, with BOM and quality specification) yields one Material Definition (the substance that is stored and shipped)"}
+  lot_material:          {from: production_lot, to: material, source: "derived: lot_of (product) then yields_material", observability: derived_operational, derivation: configuration + runtime}
   produced_on:           {from: product, to: production_unit, source: "configs/production.yaml line.id (PU-STRIPPER)", observability: operational}
   sampled_from:          {from: quality_sample, to: [control_module, work_unit], source: "sample source (CM-AT-PRODUCT, WU-QC-LAB)", observability: operational}
   sample_of:             {from: quality_sample, to: [production_lot, material_lot], source: "sample lot_id", observability: operational}

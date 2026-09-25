@@ -185,3 +185,75 @@ def test_not_represented_concepts_are_not_invented(engine, mapping_id):
     assert mapping_id not in {d["isa95"] for d in TYPES.values()}
     if mapping_id == "M-UNIT-LEVEL":
         assert not engine.hierarchy.by_level(EquipmentLevel.UNIT)
+
+
+# ---------------------------------------------------------------------------- resolved decisions
+@requires_fortran
+def test_u03_product_yields_exactly_one_material_and_lots_are_stored_as_it(demo_run):
+    """U-03: a Product Definition (PROD-GH-M1) yields exactly one Material Definition (MAT-GH). The
+    tanks that hold production lots store that material, so lot -> product -> material is consistent."""
+    st, cfg = demo_run.state, demo_run.config
+    rel = CTX["relationships"]["yields_material"]
+    assert (rel["from"], rel["to"], rel["derivation"]) == ("product", "material", "configuration")
+    products = cfg["production"]["products"]
+    for pid, p in products.items():
+        mat = p["material"]                                    # exactly one material per product
+        assert isinstance(mat, str) and st.entity(mat).kind == "material", pid
+        assert st.get(mat, "category") == "finished_good", pid
+        assert pid != mat                                      # distinct identities, not aliases
+    lots = list(st.collection("production_lots").values())
+    assert lots
+    for lot in lots:
+        mat = products[lot.product_id]["material"]
+        assert st.get(lot.location, "material") == mat, (lot.lot_id, lot.location)
+
+
+@requires_fortran
+def test_u05_canonical_ids_are_type_qualified_unambiguous_and_frozen(demo_run):
+    """U-05: <entity_type>:<native_id>; native ids are unchanged and contain no ':' so the canonical id
+    splits unambiguously; type names are well formed; the PO- collision is resolved by the type."""
+    import re
+    ident = CTX["identity"]
+    assert ident["canonical_id"] == "<entity_type>:<native_id>" and ident["status"] == "frozen"
+    pattern = re.compile(ident["entity_type_pattern"])
+    assert all(pattern.match(t) for t in TYPES)
+    st = demo_run.state
+    natives = list(st.entities) + [rid for coll in st.collections.values() for rid in coll]
+    natives += [v.id for v in catalog.XMEAS + catalog.XMV + catalog.IDV]
+    assert not [n for n in natives if ":" in str(n)], "a native id contains the separator"
+    po_prod = next(iter(st.collection("production_orders")))
+    po_purch = next(iter(st.collection("purchase_orders")))
+    assert po_prod[:3] == po_purch[:3] == "PO-"
+    assert f"production_order:{po_prod}" != f"purchase_order:{po_purch}"
+    for cid in (f"production_order:{po_prod}", "measurement:XMEAS(9)", "control_module:CM-TIC-RX"):
+        etype, native = cid.split(ident["separator"], 1)
+        assert etype in TYPES and native
+
+
+def test_u07_lifecycle_events_are_operational_and_carry_no_ground_truth():
+    """U-07: lifecycle events appear in the operational stream with the documented ids, entity and
+    payloads, and without run or scenario identity."""
+    from fastapi.testclient import TestClient
+    from api.app import create_app
+    from api.service import SimulatorService
+    svc = SimulatorService(start_runner=False)
+    try:
+        client = TestClient(create_app(svc, autoload="SCN-COOL-001"))
+        client.post("/api/simulation/start")
+        client.post("/api/simulation/pause")          # published only while the runner is running
+        client.post("/api/simulation/resume")
+        client.post("/api/simulation/step", json={"n": 10})
+        before_reset = client.get("/api/events", params={"limit": 20000}).json()
+        client.post("/api/simulation/reset", json={"duration_seconds": 5})
+        client.post("/api/simulation/step", json={"n": 5})
+        after_reset = client.get("/api/events", params={"limit": 20000}).json()
+    finally:
+        svc.shutdown()
+    spec = CTX["events"]["lifecycle"]["types"]
+    seen = {e["type"]: e for e in before_reset + after_reset if e["type"] in spec}
+    assert set(seen) == set(spec)
+    for t, e in seen.items():
+        assert e["event_id"].startswith(spec[t]["id"] + "-"), t
+        assert e["target"] == "SITE-TE"
+        assert set(e["payload"]) == set(spec[t]["operational_payload"]), t
+    assert after_reset[0]["type"] == "SIMULATION_RESET"          # a reset begins a new run
