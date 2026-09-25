@@ -1,0 +1,329 @@
+# Canonical simulator contract - machine-readable part.
+#
+# DOCUMENTATION METADATA ONLY. Nothing in simulator/, api/ or run.py reads this file; it has no
+# effect on simulation behaviour, configuration hashes or run ids. It records the *semantics* of
+# what the simulator produces, so that downstream consumers (UNS, historian, KG, i3X, MCP, agents)
+# can rely on them. The human-readable contract is docs/CANONICAL_SIMULATOR_CONTRACT.md.
+#
+# tests/test_contract.py checks this file against the implementation (event types, visibility,
+# TEP boundary couplings, entity property coverage, API route classification, versions). When the
+# implementation and this file disagree, the test fails: resolve it deliberately (see the
+# versioning rules in the contract document), never by silently changing either side.
+#
+# Field conventions
+#   class          semantic class, defined under semantic_classes
+#   owner          module that writes the value (observed; see docs/05_state_and_events/variable_reference.md)
+#   observability  operational    - what plant personnel / plant systems would have
+#                  configuration  - static design data (ratings, capacities, nominal values)
+#                  model_internal - simulation truth about the plant that no plant instrument measures
+#                  benchmark      - cause / fault truth for scoring
+#   influences_tep true when the value is an input, directly or transitively, of a tep_boundary relation
+
+contract:
+  version: 0.1.0
+  status: draft            # draft until the ambiguities in docs/CANONICAL_CONTRACT_AUDIT.md are decided
+  describes_simulator_version: 1.0.0   # simulator/__init__.py __version__
+
+semantic_classes:
+  measurement: >-
+    A TEP XMEAS value. Two forms exist: true (computed by TEFUNC, including TEP's own noise) and
+    transmitted (after the instrumentation layer). Operational interfaces use the transmitted form.
+  setpoint: Target of a native control loop (SETPT). For a cascade slave it is written by the master loop.
+  controller_output: What a loop writes - an XMV, or for a cascade master the setpoint of another loop.
+  manipulated_variable: TEP XMV, a valve / actuator command in percent (not the valve position, not a flow).
+  control_mode: Plant CLOSED_LOOP/MANUAL or loop AUTO/CAS/MAN (enterprise-layer mode handling around the native law).
+  control_status: Enterprise interpretation of the control state (e.g. output saturated).
+  condition: Physical condition of an asset (health 0..1). Model-internal, not a plant measurement.
+  condition_indicator: Observable indicator derived from condition (vibration).
+  capability: What an asset or service can deliver given its condition (efficiency, available flow, capacity fraction).
+  availability: A 0..1 fraction of design supply that can be delivered (utility availability, storage supply availability).
+  utility_observation: Meter-like utility value computed by an algebraic approximation (flow, demand, utilization, pressure, voltage, temperature).
+  discrete_state: A value from a finite set (status, is_running, desired_state, role).
+  counter: Accumulating quantity (run_hours).
+  inventory_quantity: Stock quantities and levels.
+  material_composition: Composition attributes of material lots and their deviation from nominal.
+  quality_result: Laboratory results and derived pass/fail indicators.
+  record_reference: Identifier of a record in a collection (current lot, lots in a tank).
+  configuration: Static value from configs/*.yaml (ratings, capacities, nominal values, descriptive metadata).
+  boundary_parameter: Enterprise-computed TEP input (VRNG, CPFLMX, SZERO, XST); see tep_boundary.
+
+# ------------------------------------------------------------------------------------------------
+# Entities
+# ------------------------------------------------------------------------------------------------
+entity_kinds:
+  equipment:
+    source: configs/site.yaml (ISA-95 hierarchy), validated by simulator/isa95 Hierarchy
+    identifier: ISA-95 element id, e.g. SITE-TE, WU-CWP-101A, EM-REACTOR, CM-TIC-RCW, SU-TK-101
+    levels: [Enterprise, Site, Area, WorkCenter, ProductionUnit, WorkUnit, EquipmentModule, ControlModule, StorageZone, StorageUnit]
+    count: 87
+    lifecycle: static for the whole run (registered at engine construction)
+  utility:
+    source: configs/utilities.yaml services
+    identifier: [UT-CW-REACTOR, UT-CW-CONDENSER, UT-STEAM, UT-POWER]
+    lifecycle: static
+  material:
+    source: configs/materials.yaml materials
+    identifier: [MAT-A, MAT-D, MAT-E, MAT-AC, MAT-GH]
+    lifecycle: static
+
+# How an entity property is scoped for the property tables below (implemented in tests/test_contract.py):
+#   process    - property written by ProcessInterface.sync from configs/tep_mapping.yaml bindings
+#   asset      - equipment entity with meta.asset (configs/equipment.yaml assets)
+#   storage    - equipment entity at ISA-95 level StorageUnit
+#   laboratory - the quality laboratory entity (configs/quality.yaml laboratory)
+#   utility / material - by entity kind
+process_bound_properties:
+  xmeas_binding: {class: measurement, form: transmitted, owner: ProcessInterface.sync, observability: operational, influences_tep: false}
+  xmv_binding: {class: manipulated_variable, owner: ProcessInterface.sync, observability: operational, influences_tep: false}
+  loop_properties:
+    process_value: {class: measurement, form: transmitted, owner: ProcessInterface.sync, observability: operational}
+    setpoint: {class: setpoint, owner: ProcessInterface.sync, observability: operational}
+    output: {class: controller_output, owner: ProcessInterface.sync, observability: operational}
+    mode: {class: control_mode, owner: ProcessInterface.sync, observability: operational}
+    saturated: {class: control_status, owner: ProcessInterface.sync, observability: operational}
+
+properties:
+  asset:
+    health: {class: condition, owner: EquipmentModule, observability: model_internal, influences_tep: true}
+    vibration: {class: condition_indicator, owner: EquipmentModule, observability: operational, influences_tep: false}
+    status: {class: discrete_state, owner: EquipmentModule, observability: operational, influences_tep: true}
+    is_running: {class: discrete_state, owner: EquipmentModule, observability: operational, influences_tep: true}
+    desired_state: {class: discrete_state, owner: EquipmentModule, observability: operational, influences_tep: true}
+    role: {class: discrete_state, owner: EquipmentModule, observability: operational, influences_tep: false}
+    run_hours: {class: counter, owner: EquipmentModule, observability: operational, influences_tep: false}
+    efficiency: {class: capability, owner: CouplingEngine, observability: model_internal, influences_tep: true,
+                 note: "computed only for pumps, cooling tower, boiler, compressor; placeholder 1.0 on WU-TX-401, WU-MCC-401, EM-AGITATOR"}
+    available_flow: {class: capability, owner: CouplingEngine, observability: model_internal, influences_tep: true}
+    available_steam: {class: capability, owner: CouplingEngine, observability: model_internal, influences_tep: true}
+    available_kw: {class: capability, owner: CouplingEngine, observability: model_internal, influences_tep: true}
+    capability: {class: capability, owner: CouplingEngine, observability: model_internal, influences_tep: true}
+    supply_fraction: {class: capability, owner: CouplingEngine, observability: model_internal, influences_tep: true}
+    supply_temperature_rise: {class: capability, owner: CouplingEngine, observability: model_internal, influences_tep: true}
+    "rated_*": {class: configuration, owner: EquipmentModule, observability: configuration}
+  storage:
+    quantity_kg: {class: inventory_quantity, owner: InventoryModule | WarehouseModule, observability: operational, influences_tep: true}
+    usable_kg: {class: inventory_quantity, owner: InventoryModule, observability: operational, influences_tep: true}
+    reserved_kg: {class: inventory_quantity, owner: InventoryModule, observability: operational}
+    available_kg: {class: inventory_quantity, owner: InventoryModule, observability: operational}
+    consumption_kg_h: {class: inventory_quantity, owner: InventoryModule, observability: operational}
+    level_pct: {class: inventory_quantity, owner: InventoryModule | WarehouseModule, observability: operational}
+    status: {class: discrete_state, owner: InventoryModule, observability: operational}
+    current_lot: {class: record_reference, owner: InventoryModule, observability: operational}
+    lots: {class: record_reference, owner: WarehouseModule, observability: operational}
+    supply_availability: {class: availability, owner: InventoryModule, observability: model_internal, influences_tep: true,
+                          note: "tagged meta.unobservable; heel/ramp function of usable stock"}
+    feed_impurity: {class: material_composition, owner: InventoryModule, observability: model_internal, note: "tagged meta.unobservable"}
+    feed_a_fraction: {class: material_composition, owner: InventoryModule, observability: model_internal, note: "tagged meta.unobservable"}
+    feed_b_fraction: {class: material_composition, owner: InventoryModule, observability: model_internal, note: "tagged meta.unobservable"}
+    feed_impurity_deviation: {class: material_composition, owner: InventoryModule, observability: model_internal, influences_tep: true,
+                              note: "AMBIGUITY A1: intended unobservable but not tagged; exposed by /api/inventory"}
+    feed_a_fraction_deviation: {class: material_composition, owner: InventoryModule, observability: model_internal, influences_tep: true, note: "AMBIGUITY A1"}
+    feed_b_fraction_deviation: {class: material_composition, owner: InventoryModule, observability: model_internal, influences_tep: true, note: "AMBIGUITY A1"}
+    capacity_kg: {class: configuration, owner: InventoryModule, observability: configuration}
+    material: {class: configuration, owner: InventoryModule | WarehouseModule, observability: configuration}
+  utility:
+    capacity: {class: configuration, owner: UtilitiesModule, observability: configuration, influences_tep: true}
+    "nominal_*": {class: configuration, owner: UtilitiesModule, observability: configuration}
+    available_capacity: {class: capability, owner: CouplingEngine, observability: model_internal, influences_tep: true}
+    available_for_process: {class: capability, owner: CouplingEngine, observability: model_internal, influences_tep: true}
+    capacity_fraction: {class: capability, owner: CouplingEngine, observability: model_internal, influences_tep: true}
+    process_supply_fraction: {class: capability, owner: CouplingEngine, observability: model_internal, influences_tep: true}
+    availability: {class: availability, owner: UtilitiesModule, observability: model_internal,
+                   note: "capacity_fraction clipped to 0..1 (fallback available/capacity)"}
+    health: {class: condition, owner: CouplingEngine, observability: model_internal, note: "aggregate of supplying asset health"}
+    status: {class: discrete_state, owner: UtilitiesModule, observability: operational,
+             note: "AMBIGUITY A3: derived from model-internal availability as well as observable utilization"}
+    flow: {class: utility_observation, owner: CouplingEngine, observability: operational}
+    demand: {class: utility_observation, owner: CouplingEngine, observability: operational}
+    process_demand: {class: utility_observation, owner: CouplingEngine, observability: operational, influences_tep: true,
+                     note: "AMBIGUITY A4: an observation (reads XMEAS(20), XMV(12)) that feeds supply fraction"}
+    utilization: {class: utility_observation, owner: CouplingEngine, observability: operational}
+    return_temperature: {class: utility_observation, owner: CouplingEngine, observability: operational}
+    temperature: {class: utility_observation, owner: CouplingEngine, observability: operational, influences_tep: true,
+                  note: "CW supply temperature; also the source of SZERO(5)/SZERO(6). Null on UT-POWER (AMBIGUITY A5)"}
+    pressure: {class: utility_observation, owner: CouplingEngine, observability: operational, note: "null on UT-POWER (AMBIGUITY A5)"}
+    voltage: {class: utility_observation, owner: CouplingEngine, observability: operational}
+    shed_load: {class: utility_observation, owner: CouplingEngine, observability: operational}
+  material:
+    category: {class: configuration, owner: MaterialsModule, observability: configuration}
+    unit: {class: configuration, owner: MaterialsModule, observability: configuration}
+    tep_measurement: {class: configuration, owner: MaterialsModule, observability: configuration}
+  laboratory:
+    last_result: {class: quality_result, owner: QualityModule, observability: operational}
+    last_result_fail: {class: quality_result, owner: QualityModule, observability: operational}
+    consecutive_failures: {class: quality_result, owner: QualityModule, observability: operational}
+    "<test id, lower case>": {class: quality_result, owner: QualityModule, observability: operational,
+                              note: "one property per product test in configs/quality.yaml, e.g. g_mass_pct"}
+
+collections:
+  work_orders: {id_field: wo_id, id_format: "WO-00001", owner: MaintenanceModule, observability: operational}
+  technicians: {id_field: id, owner: MaintenanceModule, observability: operational}
+  spare_parts: {id_field: part_id, owner: InventoryModule, observability: operational}
+  purchase_orders: {id_field: po_id, id_format: "PO-00001", owner: InventoryModule, observability: operational}
+  material_lots: {id_field: lot_id, owner: InventoryModule, observability: operational,
+                  note: "the attributes field is lot composition (model_internal)"}
+  production_orders: {id_field: order_id, owner: SchedulingModule | ProductionModule, observability: operational}
+  production_lots: {id_field: lot_id, id_format: "PL-0001", owner: ProductionModule | QualityModule, observability: operational}
+  quality_samples: {id_field: sample_id, id_format: "QS-00001", owner: QualityModule, observability: operational}
+  shipments: {id_field: shipment_id, owner: WarehouseModule, observability: operational}
+  alarms: {id_field: alarm_id, owner: AlarmModule, observability: operational}
+  operator_log: {owner: OperatorModule, observability: operational}
+  faults: {id_field: id, owner: FaultEngine, observability: benchmark}
+
+# ------------------------------------------------------------------------------------------------
+# TEP process variables (the catalog itself is simulator/tep/catalog.py, transcribed from teprob.f)
+# ------------------------------------------------------------------------------------------------
+process_variables:
+  catalog: simulator/tep/catalog.py
+  xmeas: {count: 41, class: measurement, direction: TEP -> enterprise, written_by: TEFUNC,
+          forms: {true: process.xmeas_true, transmitted: process.xmeas}}
+  xmv: {count: 12, class: manipulated_variable, direction: native control / operator -> TEP, written_by: CONTRLn | operator (loop in MAN)}
+  idv: {count: 20, class: disturbance, direction: benchmark -> TEP, written_by: FaultEngine only, values: [0, 1]}
+  setpt: {count: 20, class: setpoint, loops_defined: 19, written_by: TEINIT constants | cascade master | operator}
+  control_loops: {count: 19, source: simulator/tep/control_scheme.py, periods_s: {3: 14, 360: 4, 900: 1}}
+
+# ------------------------------------------------------------------------------------------------
+# Enterprise -> TEP boundary (the only enterprise writes into TEP physics inputs)
+# ------------------------------------------------------------------------------------------------
+tep_boundary:
+  implementation: simulator/tep/boundary.py BOUNDARY_PARAMETERS; written only by CouplingEngine via ProcessInterface.set_boundary
+  couplings:
+    - {relation: CR-CW-RX-TEP, parameter: reactor_cw_max_flow, symbol: "VRNG(10)", transformation: "nominal * UT-CW-REACTOR.capacity_fraction"}
+    - {relation: CR-CW-COND-TEP, parameter: condenser_cw_max_flow, symbol: "VRNG(11)", transformation: "nominal * UT-CW-CONDENSER.capacity_fraction"}
+    - {relation: CR-CW-RX-SUPPLY-T-TEP, parameter: reactor_cw_inlet_temperature_mean, symbol: "SZERO(5)", transformation: "UT-CW-REACTOR.temperature"}
+    - {relation: CR-CW-COND-SUPPLY-T-TEP, parameter: condenser_cw_inlet_temperature_mean, symbol: "SZERO(6)", transformation: "UT-CW-CONDENSER.temperature"}
+    - {relation: CR-STEAM-TEP, parameter: stripper_steam_valve_range, symbol: "VRNG(9)", transformation: "nominal * UT-STEAM.capacity_fraction"}
+    - {relation: CR-COMPRESSOR-TEP, parameter: compressor_max_flow, symbol: CPFLMX, transformation: "nominal * EM-COMPRESSOR.capability"}
+    - {relation: CR-FEED-A-SUPPLY, parameter: a_feed_max_flow, symbol: "VRNG(3)", transformation: "nominal * SU-SPH-103.supply_availability"}
+    - {relation: CR-FEED-D-SUPPLY, parameter: d_feed_max_flow, symbol: "VRNG(1)", transformation: "nominal * SU-TK-101.supply_availability"}
+    - {relation: CR-FEED-E-SUPPLY, parameter: e_feed_max_flow, symbol: "VRNG(2)", transformation: "nominal * SU-TK-102.supply_availability"}
+    - {relation: CR-FEED-AC-SUPPLY, parameter: ac_feed_max_flow, symbol: "VRNG(4)", transformation: "nominal * SU-SPH-104.supply_availability"}
+    - {relation: CR-FEED-D-LOT, parameter: d_feed_b_impurity, symbol: "XST(2,1)", transformation: "nominal + SU-TK-101.feed_impurity_deviation"}
+    - {relation: CR-FEED-E-LOT, parameter: e_feed_f_impurity, symbol: "XST(6,2)", transformation: "nominal + SU-TK-102.feed_impurity_deviation"}
+    - {relation: CR-FEED-A-LOT, parameter: a_feed_b_impurity, symbol: "XST(2,3)", transformation: "nominal + SU-SPH-103.feed_impurity_deviation"}
+    - {relation: CR-FEED-AC-LOT-A, parameter: stream4_a_fraction_mean, symbol: "SZERO(1)", transformation: "nominal + SU-SPH-104.feed_a_fraction_deviation"}
+    - {relation: CR-FEED-AC-LOT-B, parameter: stream4_b_fraction_mean, symbol: "SZERO(2)", transformation: "nominal + SU-SPH-104.feed_b_fraction_deviation"}
+  defined_but_not_coupled: [d_feed_temperature_mean, stream4_temperature_mean]
+  other_enterprise_writes:
+    idv: FaultEngine (TEP-native fault types), via ProcessInterface.set_disturbance
+    xmv: operator command, only for a loop that is not executing (MAN)
+    setpt: operator command, only when no executing cascade master writes it
+    errold: adapter, bumpless MAN -> AUTO transfer
+    pv_swap: adapter, transmitted XMEAS placed in /PV/ only while CONTRLn runs, true values restored
+  never_written: [TEP states (YY), derivatives (YP), TEFUNC equations, XMEAS as computed by TEFUNC, controller gains and reset times after initialisation, trip limits]
+
+# ------------------------------------------------------------------------------------------------
+# Events (simulator/events/__init__.py)
+# ------------------------------------------------------------------------------------------------
+events:
+  id_sequences: {EV: simulation events, LC: lifecycle events that depend on wall-clock user interaction}
+  types:
+    SIMULATION_STARTED: {visibility: operational, id: LC}
+    SIMULATION_PAUSED: {visibility: operational, id: LC}
+    SIMULATION_RESUMED: {visibility: operational, id: LC}
+    SIMULATION_RESET: {visibility: operational, id: LC}
+    SIMULATION_COMPLETED: {visibility: operational, id: EV}
+    FAULT_CREATED: {visibility: benchmark, id: EV}
+    FAULT_SCHEDULED: {visibility: benchmark, id: EV}
+    FAULT_STARTED: {visibility: benchmark, id: EV}
+    FAULT_STOPPED: {visibility: benchmark, id: EV}
+    FAULT_RESET: {visibility: benchmark, id: EV}
+    EQUIPMENT_STATE_CHANGED: {visibility: operational, id: EV, records_change_of: asset status}
+    EQUIPMENT_DEGRADED: {visibility: operational, id: EV, records_change_of: asset health band (GOOD -> POOR)}
+    EQUIPMENT_FAILED: {visibility: operational, id: EV, records_change_of: asset status FAILED}
+    EQUIPMENT_REPAIRED: {visibility: operational, id: EV, records_change_of: asset health restored}
+    PROCESS_SHUTDOWN: {visibility: operational, id: EV, records_change_of: process.shutdown}
+    CONTROL_MODE_CHANGED: {visibility: operational, id: EV, records_change_of: plant or loop mode}
+    SETPOINT_CHANGED: {visibility: operational, id: EV, records_change_of: SETPT (operator)}
+    MANIPULATED_VARIABLE_CHANGED: {visibility: operational, id: EV, records_change_of: XMV (operator)}
+    UTILITY_STATE_CHANGED: {visibility: operational, id: EV, records_change_of: utility status}
+    ALARM_ACTIVATED: {visibility: operational, id: EV, records_change_of: alarm state}
+    ALARM_ACKNOWLEDGED: {visibility: operational, id: EV, records_change_of: alarm state}
+    ALARM_CLEARED: {visibility: operational, id: EV, records_change_of: alarm state}
+    PRODUCTION_ORDER_CREATED: {visibility: operational, id: EV, records_change_of: production order}
+    PRODUCTION_ORDER_RELEASED: {visibility: operational, id: EV, records_change_of: production order status}
+    PRODUCTION_ORDER_STARTED: {visibility: operational, id: EV, records_change_of: production order status}
+    PRODUCTION_ORDER_PAUSED: {visibility: operational, id: EV, records_change_of: production order status}
+    PRODUCTION_ORDER_RESUMED: {visibility: operational, id: EV, records_change_of: production order status}
+    PRODUCTION_ORDER_BLOCKED: {visibility: operational, id: EV, records_change_of: production order status}
+    PRODUCTION_ORDER_COMPLETED: {visibility: operational, id: EV, records_change_of: production order status}
+    PRODUCTION_ORDER_CANCELLED: {visibility: operational, id: EV, records_change_of: production order status}
+    PRODUCTION_STATE_CHANGED: {visibility: operational, id: EV, records_change_of: production line state}
+    MAINTENANCE_REQUESTED: {visibility: operational, id: EV, records_change_of: work order created}
+    MAINTENANCE_SCHEDULED: {visibility: operational, id: EV, records_change_of: work order status}
+    MAINTENANCE_WAITING: {visibility: operational, id: EV, records_change_of: work order status (also CANCELLED)}
+    MAINTENANCE_STARTED: {visibility: operational, id: EV, records_change_of: work order status}
+    MAINTENANCE_COMPLETED: {visibility: operational, id: EV, records_change_of: work order status}
+    QUALITY_SAMPLE_TAKEN: {visibility: operational, id: EV, records_change_of: quality sample created}
+    QUALITY_RESULT_CREATED: {visibility: operational, id: EV, records_change_of: quality sample result}
+    LOT_STATE_CHANGED: {visibility: operational, id: EV, records_change_of: product or material lot status}
+    MATERIAL_CONSUMED: {visibility: operational, id: EV, records_change_of: stock (posted every 900 s, not a state change)}
+    MATERIAL_RECEIVED: {visibility: operational, id: EV, records_change_of: stock, material lot created}
+    MATERIAL_ORDERED: {visibility: operational, id: EV, records_change_of: purchase order created}
+    MATERIAL_SHORTAGE: {visibility: operational, id: EV, records_change_of: storage status}
+    MATERIAL_SHORTAGE_CLEARED: {visibility: operational, id: EV, records_change_of: storage status}
+    INVENTORY_MOVED: {visibility: operational, id: EV, records_change_of: lot location / shipment}
+    OPERATOR_ACTION: {visibility: operational, id: EV, records_change_of: operator log}
+  ground_truth_fields: [correlation_id, causation_id]   # carry fault ids on operational events (leak G1)
+
+# ------------------------------------------------------------------------------------------------
+# API route classification (api/app.py). class: operational | benchmark | control | development.
+# exposes lists ground-truth exposures (ids from docs/11_limitations/benchmark_limitations.md).
+# ------------------------------------------------------------------------------------------------
+api_routes:
+  "GET /api/simulation": {class: operational, exposes: [G12]}
+  "POST /api/simulation/create": {class: control}
+  "POST /api/simulation/start": {class: control}
+  "POST /api/simulation/pause": {class: control}
+  "POST /api/simulation/resume": {class: control}
+  "POST /api/simulation/reset": {class: control}
+  "POST /api/simulation/step": {class: control}
+  "POST /api/simulation/run_until": {class: control}
+  "POST /api/simulation/speed": {class: control}
+  "GET /api/simulation/manifest": {class: operational, exposes: [G11]}
+  "GET /api/enterprise": {class: operational}
+  "GET /api/site": {class: operational}
+  "GET /api/areas": {class: operational}
+  "GET /api/hierarchy": {class: operational}
+  "GET /api/equipment": {class: operational}
+  "GET /api/equipment/{entity_id}": {class: operational, exposes: [G2]}
+  "GET /api/entities": {class: operational, exposes: [G2, G5]}
+  "GET /api/entities/{entity_id}": {class: operational, exposes: [G2, G5]}
+  "GET /api/entities/{entity_id}/properties/{prop}": {class: operational, exposes: [G2, G5]}
+  "GET /api/process/measurements": {class: operational}
+  "GET /api/process/setpoints": {class: operational}
+  "GET /api/process/manipulated-variables": {class: operational}
+  "GET /api/process/loops": {class: operational}
+  "GET /api/process/image": {class: operational, exposes: [G3]}
+  "GET /api/process/catalog": {class: operational}
+  "GET /api/process/internal-states": {class: development, exposes: [G8]}
+  "GET /api/alarms": {class: operational}
+  "GET /api/events": {class: operational, exposes: [G1]}
+  "GET /api/utilities": {class: operational, exposes: [G2]}
+  "GET /api/maintenance": {class: operational, exposes: [G2]}
+  "GET /api/inventory": {class: operational, exposes: [G5]}
+  "GET /api/quality": {class: operational}
+  "GET /api/production-orders": {class: operational}
+  "GET /api/production": {class: operational}
+  "GET /api/coupling": {class: development, exposes: [G3, G9]}
+  "GET /api/history": {class: operational, exposes: [G4]}
+  "GET /api/history/catalog": {class: operational}
+  "GET /api/operator/actions": {class: operational}
+  "POST /api/operator/{action}": {class: control}
+  "GET /api/scenarios": {class: development, exposes: [G7]}
+  "GET /api/scenarios/current": {class: development, exposes: [G7]}
+  "GET /api/scenarios/{scenario_id}": {class: development, exposes: [G7]}
+  "POST /api/scenarios": {class: development}
+  "POST /api/scenarios/{scenario_id}/duplicate": {class: development}
+  "GET /api/export/json": {class: development, exposes: [G6]}
+  "GET /api/export/csv": {class: development, exposes: [G6]}
+  "GET /api/ui/snapshot": {class: operational, exposes: [G1, G2, G3, G12]}
+  "GET /api/benchmark/faults/catalog": {class: benchmark}
+  "GET /api/benchmark/faults": {class: benchmark}
+  "POST /api/benchmark/faults": {class: benchmark}
+  "GET /api/benchmark/faults/{fault_id}": {class: benchmark}
+  "POST /api/benchmark/faults/{fault_id}/schedule": {class: benchmark}
+  "POST /api/benchmark/faults/{fault_id}/start": {class: benchmark}
+  "POST /api/benchmark/faults/{fault_id}/stop": {class: benchmark}
+  "POST /api/benchmark/faults/{fault_id}/reset": {class: benchmark}
+  "GET /api/benchmark/ground-truth": {class: benchmark}

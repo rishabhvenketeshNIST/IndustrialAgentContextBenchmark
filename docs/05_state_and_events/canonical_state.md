@@ -2,7 +2,8 @@
 
 `CanonicalState` (`simulator/state/__init__.py`) is the simulator's internal source of truth. It is an
 in-memory Python object, not a Unified Namespace and not persisted. All modules read and write it; the
-API serialises views of it.
+API serialises views of it. What each part *means* is defined in the
+[canonical contract](../CANONICAL_SIMULATOR_CONTRACT.md).
 
 ## Contents
 

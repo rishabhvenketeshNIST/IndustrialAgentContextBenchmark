@@ -8,7 +8,8 @@ maintenance, production and quality.
 **How to read it.**
 
 * The reference documentation lives in the tree under [docs/README.md](README.md). This guide explains
-  and links to it; it does not replace it.
+  and links to it; it does not replace it. For the exact semantics of any value, event or coupling,
+  the [canonical simulator contract](CANONICAL_SIMULATOR_CONTRACT.md) is authoritative.
 * Every claim was checked against the code, configuration and tests in this repository. Paths are
   relative to the repository root. Functions are named instead of line numbers, so references survive
   edits. The only line numbers are for the unmodified Fortran sources.
@@ -939,7 +940,7 @@ rule, or the fault engine.
 * **FAULT_* events:** excluded from `/api/events` (`include_benchmark=False`) and from the UI snapshot.
 * **Measurement routes:** return *transmitted* values.
 
-**What they still leak.** Each item is verified in code and numbered G1–G10 in
+**What they still leak.** Each item is verified in code and numbered G1–G12 in
 [benchmark limitations](11_limitations/benchmark_limitations.md):
 
 | # | Route / field | What an observer learns |
@@ -954,13 +955,15 @@ rule, or the fault engine.
 | G8 | `/api/process/internal-states` | the 50 TEP states |
 | G9 | `/api/coupling` relation values | capacity fractions and `fault.*` inputs |
 | G10 | the UI | shows G2 and G3, and has the Fault Injection tab in the same page |
+| G11 | `/api/simulation/manifest` | the fault list and `active_faults` in the run manifest |
+| G12 | `/api/simulation`, `/api/ui/snapshot` → `scenario.description` | the scenario text, which names the hidden fault in the demo |
 
 `CanonicalState.snapshot(include_truth=False)` would drop `xmeas_true`, `idv` and the `faults`
 collection, but **no route calls it with `False`**.
 
 ### What must eventually be hidden from an agent
 
-Everything in G1–G10, plus the benchmark routes themselves. Concretely, an agent-facing view should
+Everything in G1–G12, plus the benchmark routes themselves. Concretely, an agent-facing view should
 contain only:
 
 * transmitted XMEAS, XMV, setpoints, modes and loop table;
@@ -1179,7 +1182,7 @@ Full lists: [known limitations](11_limitations/known_limitations.md) (L1–L18),
 | **Boundary timing** | `SZERO` supply-temperature and stream-4 changes act at the next random-walk knot (0.1–1.7 h depending on the walk). | Cooling-tower faults take effect with a delay that is a TEP artefact, not a plant property. |
 | **Backend differences** | The Python backend is statistically, not bit-for-bit, equivalent. | Use Fortran for any result you report. `run.py` warns on fallback. |
 | **Causal labels** | Heuristic: 0.5 % deviation from the t = 0 baseline, first cause wins, hand-curated `process_influences`. | Correlation ids are good for single-fault scoring, and unreliable with overlapping faults or near-baseline effects. |
-| **Observability** | The truth/observable split is incomplete (G1–G10). | Do not connect an agent to the current API for a diagnosis benchmark. |
+| **Observability** | The truth/observable split is incomplete (G1–G12). | Do not connect an agent to the current API for a diagnosis benchmark. |
 | **Unmodelled phenomena** | Operator behaviour (except scripts), communication delays and OT networks, historian compression, start-up and grade changes, economics, weather, multi-site interactions. | Out of scope by design. |
 | **Engineering** | Tested on Windows with Python 3.11 only. The Dockerfile is untested. The event log caps at 250,000 events and the trend buffer at 20,000 samples in memory. Temp library copies are not deleted. | Long or parallel runs need exports and housekeeping. |
 
@@ -1408,7 +1411,7 @@ Each item names the tempting wrong model and states what the implementation actu
 4. **Fault truth vs observable event.** *Wrong model:* `FAULT_STARTED` or the pump's `health` tell an
    operator what happened. *Actually:* a real operator sees vibration rising, a utility going DEGRADED,
    a valve saturating and temperature alarms. `health`, `fault_effects` and FAULT_* events are
-   benchmark truth. Some of it still leaks through operational routes (G1–G10).
+   benchmark truth. Some of it still leaks through operational routes (G1–G12).
 
 5. **Causal graph vs execution graph.** *Wrong model:* the variable graph shows what happens, and its
    shortest path is the mechanism. *Actually:* the graph shows which mechanisms exist, with no time or

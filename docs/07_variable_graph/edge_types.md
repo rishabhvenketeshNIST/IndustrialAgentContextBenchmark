@@ -1,7 +1,8 @@
 # Edge types
 
 Each edge has a coarse **display kind** (the five chips in the viewer) and a finer **semantics**
-derived from the implementation. Relationships are not all "causal" in the same sense.
+derived from the implementation. Relationships are not all "causal" in the same sense. The normative
+relationship semantics are in [canonical contract §18](../CANONICAL_SIMULATOR_CONTRACT.md#18-coupling-and-relationship-semantics).
 
 ## Semantic types
 

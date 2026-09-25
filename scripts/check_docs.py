@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOC_FILES = [ROOT / "README.md"] + sorted((ROOT / "docs").rglob("*.md"))
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 TICK_RE = re.compile(r"`([^`]+)`")
-PATH_RE = re.compile(r"^(simulator|api|configs|scripts|tests|ui|scenarios|docs)/[\w./-]+$")
+PATH_RE = re.compile(r"^(simulator|api|configs|contract|scripts|tests|ui|scenarios|docs)/[\w./-]+$")
 SOURCE_LINE_RE = re.compile(r"^\s*-\s+`([^`]+)`\s*(?:—|-)\s*(.+)$")
 SYMBOL_RE = re.compile(r"`([A-Za-z_][\w.]*)`")
 

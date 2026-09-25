@@ -63,7 +63,7 @@ only. See [configuration](../10_operation/configuration.md).
 
 1. The quality limits (47.5-52.5 G mass %, etc.) are acceptable benchmark defaults.
 2. The demo's severity (0.62) near the trip threshold is intended.
-3. Ground-truth leakage on operational routes (G1-G10) is acceptable until an observable view exists.
+3. Ground-truth leakage on operational routes (G1–G12) is acceptable until an observable view exists.
 4. The cooling-tower planned maintenance in SCN-FAULT-LIBRARY is meant to disturb the process.
 
 ## Minor implementation observations found while documenting

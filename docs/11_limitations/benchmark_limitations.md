@@ -25,6 +25,8 @@ agent-visible information.* The current implementation guarantees part of it.
 | G8 | `/api/process/internal-states` | TEP states (labelled diagnostic) | medium |
 | G9 | `/api/coupling` relation values | capacity fractions and fault-channel inputs | high |
 | G10 | UI | shows G2 and G3 and has a Fault Injection tab in the same page | a human operator sees truth |
+| G11 | `/api/simulation/manifest` | the run manifest includes the fault list (`faults`, `active_faults`) | **high** |
+| G12 | `/api/simulation`, `/api/ui/snapshot` → `scenario.description` | the scenario description, which for SCN-COOL-001 names the hidden fault | **high** |
 
 Metadata tags `model_internal` (assets) and `unobservable` (storage attributes) mark some of these
 values. Only the UI details panel and `get_inventory` honour `unobservable`; nothing honours

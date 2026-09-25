@@ -15,7 +15,8 @@ python scripts/check_docs.py              # doc links and source references stil
 | `configs/coupling.yaml` or equipment ratings | `test_coupling_baseline_is_native_and_graph_is_acyclic`, `test_healthy_enterprise_reproduces_native_tep_exactly`, `test_equipment_degradation_propagates_through_coupling_to_tep` |
 | module order, random draws, event publishing | `test_same_scenario_same_seed_identical_results`, `test_fault_injection_is_deterministic`, `test_reset_returns_to_initial_state` |
 | demo scenario, maintenance, alarms, quality | `test_demo_scenario_causal_chain` |
-| API routes | `tests/test_api_ui.py`, especially `test_fault_injection_is_benchmark_only` |
+| API routes | `tests/test_api_ui.py`, especially `test_fault_injection_is_benchmark_only`; classify every new route in `contract/canonical_contract.yaml` (`test_every_api_route_is_classified`) |
+| event types, entity properties, collections, TEP couplings | `tests/test_contract.py`: update the canonical contract deliberately |
 
 ## Determinism hygiene
 

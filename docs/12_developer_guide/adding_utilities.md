@@ -15,6 +15,8 @@
    `fault.<ID>.capacity_loss` must be read by a relation to have an effect.
 6. The trend buffer records `available_capacity, utilization, flow, temperature, pressure, availability,
    capacity_fraction` for every service automatically (`TrendBuffer.build_default`).
+7. **Contract:** classify any new property under `properties.utility` in `contract/canonical_contract.yaml`,
+   and any new TEP coupling under `tep_boundary` (`tests/test_contract.py`).
 
 Source:
 - `configs/utilities.yaml`

@@ -42,7 +42,7 @@ Dashed means not implemented. The principle for those layers:
 
 ## Things to settle before building downstream layers
 
-1. The observable view (allow-list), with the leaks G1-G10 closed.
+1. The observable view (allow-list), with the leaks G1–G12 closed.
 2. Whether downstream layers may issue operator actions, and which ones.
 3. The time base: simulation time vs wall time; exported timestamps come from `simulation_start`.
 4. Whether per-second data is needed. The trend buffer is 10 s; a historian would need its own

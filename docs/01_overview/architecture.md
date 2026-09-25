@@ -1,6 +1,7 @@
 # Architecture
 
-This page traces how the system is assembled and how a simulation evolves, as implemented.
+This page traces how the system is assembled and how a simulation evolves, as implemented. The
+meaning of what it produces is defined in the [canonical contract](../CANONICAL_SIMULATOR_CONTRACT.md).
 
 ## 1. Overall architecture
 

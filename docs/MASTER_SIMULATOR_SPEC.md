@@ -3,7 +3,9 @@
 **System:** ACME enterprise manufacturing simulator (Tennessee Eastman site). **Simulator version:**
 1.0.0 (`simulator.__version__`). **Status of this document:** describes the implementation in this
 repository. Where the implementation is incomplete or differs from earlier documentation, the text
-says so. Detailed pages are linked from each section.
+says so. Detailed pages are linked from each section. The exact meaning, ownership and observability of
+everything the simulator produces is defined in the **[canonical simulator contract](CANONICAL_SIMULATOR_CONTRACT.md)**;
+where this specification summarises the same concepts, the contract is authoritative.
 
 ---
 
@@ -312,7 +314,7 @@ Details: [determinism](09_validation/determinism.md), [seeds and reproducibility
 **Security and ground-truth separation.**
 * **Enforced:** fault control and fault events are benchmark-only.
 * **Not enforced:** correlation ids, health, boundary values, true measurements in history, lot
-  deviations, exports and scenario files are reachable from operational routes (G1-G10).
+  deviations, exports and scenario files are reachable from operational routes (G1–G12).
 * **No authentication.**
 
 Details: [benchmark limitations](11_limitations/benchmark_limitations.md).

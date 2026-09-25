@@ -2,3 +2,14 @@ __pycache__/
 *.pyc
 .pytest_cache/
 exports/
+
+# Local environments and logs
+.venv/
+venv/
+.env
+*.log
+
+# Platform builds of the TEP library (scripts/build_fortran.py). The Windows DLL is committed on
+# purpose (run manifests record its SHA-256); other platforms build their own.
+simulator/tep/fortran/lib/*.so
+simulator/tep/fortran/lib/*.dylib
