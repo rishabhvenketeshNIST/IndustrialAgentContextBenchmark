@@ -1,55 +1,63 @@
 # Benchmark limitations: ground truth vs observable state
 
-The benchmark relies on this principle: *ground truth must not accidentally become operational or
-agent-visible information.* The current implementation guarantees part of it.
+The benchmark relies on this principle: *ground truth must not become operational or agent-visible
+information.* Since contract 0.2.0 the operational routes enforce it through the **operational
+boundary** (`api/operational.py`; [canonical contract §20](../CANONICAL_SIMULATOR_CONTRACT.md#20-ground-truth)).
 
-## Enforced today
+## Enforced
 
-* **Fault control** exists only on `BenchmarkFaultAPI` and `/api/benchmark/*`
-  (`test_fault_injection_is_benchmark_only`).
-* **FAULT_* events** are excluded from `/api/events` and the UI event list.
-* **Sensor faults** change only transmitted values. Operational measurement routes return transmitted
-  values.
+* **Operational routes (`/api/*` outside `/api/benchmark/*`)** serve only operational views:
+  * no fault or scenario identity, no seeds, no run id or configuration hash;
+  * no fault-derived correlation;
+  * no model-internal properties (health, capability, availability, utility status, lot composition);
+  * no boundary values, true measurements or TEP states;
+  * asset status without the hidden DEGRADED band;
+  * an event stream renumbered so that withheld events leave no gap.
+* **Fault control, ground truth, evaluator views and the benchmark console (web UI)** are only under
+  `/api/benchmark/*`.
+* **Sensor faults** change only transmitted values.
+* **Tests:**
+  * `tests/test_operational_boundary.py` crawls every operational route in the demo, before and after
+    the first symptom, and checks for fault, scenario and model-internal information. It also shows that
+    the operational event stream equals that of a fault-free run until the first observable symptom.
+  * `tests/test_contract.py` keeps the boundary rules and the property classification consistent with
+    the contract.
 
-## Leaks (non-benchmark routes that expose truth)
+## Former leaks and their resolution
 
-| # | Route / field | What leaks | Severity |
+| # | Route / field | What leaked | Resolution |
 |---|---|---|---|
-| G1 | `/api/events` → `correlation_id`, `causation_id` | the fault id as root cause of alarms, utility, equipment, maintenance and quality events | **high**: this is the answer to a diagnosis task |
-| G2 | `/api/entities/{id}`, `/api/equipment/{id}`, `/api/maintenance`, `/api/ui/snapshot` → `health`, `efficiency`, `available_flow`, `capability` | true equipment condition (a hidden `pump_efficiency_loss` is visible as reduced efficiency) | **high** |
-| G3 | `/api/process/image`, `/api/coupling`, `/api/ui/snapshot` → `boundary` | reduced VRNG(10), CPFLMX, … reveal the affected subsystem | **high** |
-| G4 | `/api/history` → `TRUE:XMEAS(n)` | the difference from transmitted values reveals a sensor fault | **high** for sensor faults |
-| G5 | `/api/inventory`, `/api/entities/SU-*` → `*_deviation` | raw-material quality deviation | **high** for that fault; the deviations were meant to be tagged `unobservable` but are not |
-| G6 | `/api/export/json`, `/api/export/csv` | everything, including FAULT_* events and fault records | **high** |
-| G7 | `/api/scenarios`, `/api/scenarios/{id}`, `/api/scenarios/current` | fault definitions of scenario files and of the running scenario | **high** |
-| G8 | `/api/process/internal-states` | TEP states (labelled diagnostic) | medium |
-| G9 | `/api/coupling` relation values | capacity fractions and fault-channel inputs | high |
-| G10 | UI | shows G2 and G3 and has a Fault Injection tab in the same page | a human operator sees truth |
-| G11 | `/api/simulation/manifest` | the run manifest includes the fault list (`faults`, `active_faults`) | **high** |
-| G12 | `/api/simulation`, `/api/ui/snapshot` → `scenario.description` | the scenario description, which for SCN-COOL-001 names the hidden fault | **high** |
+| G1 | `/api/events` → `correlation_id`, `causation_id` | the fault id as root cause; causation pointing at the hidden `FAULT_STARTED` | rebuilt from operational causation only |
+| G2 | `/api/entities`, `/api/equipment`, `/api/maintenance`, `/api/utilities`, snapshot → `health`, `efficiency`, `available_*`, `capability` | true equipment condition | properties tagged `model_internal` are withheld (404 like a missing property) |
+| G3 | `/api/process/image`, `/api/coupling`, snapshot → `boundary` | reduced `VRNG(10)`, `CPFLMX`, … | removed from the operational image; `/api/benchmark/process/image` |
+| G4 | `/api/history` → `TRUE:XMEAS(n)` | true vs transmitted reveals sensor faults | not listed and rejected operationally; `/api/benchmark/history` |
+| G5 | `/api/inventory`, `/api/entities/SU-*` → `*_deviation` | raw-material quality deviation | tagged `unobservable` and withheld |
+| G6 | `/api/export/json`, `/api/export/csv` | everything, including fault records | moved to `/api/benchmark/export/*` |
+| G7 | `/api/scenarios`, `/api/scenarios/{id}`, `/api/scenarios/current` | scenario fault definitions | moved to `/api/benchmark/scenarios*` |
+| G8 | `/api/process/internal-states` | TEP states | moved to `/api/benchmark/process/internal-states` |
+| G9 | `/api/coupling` | capacity fractions and fault-channel inputs | moved to `/api/benchmark/coupling` |
+| G10 | UI | showed G2/G3 next to the Fault Injection tab | decision: the UI is the benchmark console and reads `/api/benchmark/*` |
+| G11 | `/api/simulation/manifest` | fault list, `active_faults`, scenario id, run id, seeds, configuration hash, event count | operational manifest without them; `/api/benchmark/manifest` |
+| G12 | `/api/simulation`, snapshot → `scenario` | scenario name and description naming the fault | removed operationally; `/api/benchmark/simulation` |
+| G13 | asset `status` = DEGRADED; `EQUIPMENT_DEGRADED`; RUNNING↔DEGRADED `EQUIPMENT_STATE_CHANGED`; hierarchy roll-ups | the true health band, 10 min before the first symptom in the demo | DEGRADED reported as RUNNING; those events withheld |
+| G14 | `EQUIPMENT_FAILED.reason`, health fields in equipment events, `EQUIPMENT_REPAIRED.cleared_fault_effects` | fault-induced vs worn-out failure; fault ids | payload fields removed |
+| G15 | utility `status`, `availability`, capacity fields, `UTILITY_STATE_CHANGED` | hidden capacity loss 18 min before the first symptom in the demo (A3) | tagged `model_internal`; the event type is withheld |
+| G16 | sequential `EV-` event ids | gaps at 01:00:00 (fault start) and 01:02:57 (utility change) | operational ids `OE-n` over the operational stream |
 
-Metadata tags `model_internal` (assets) and `unobservable` (storage attributes) mark some of these
-values. Only the UI details panel and `get_inventory` honour `unobservable`; nothing honours
-`model_internal`.
+The full classification, including the items judged legitimate and the decisions D1–D5, is in the
+[contract audit](../CANONICAL_CONTRACT_AUDIT.md).
 
-## Consequence
+## Remaining limitations
 
-The current REST API is a **benchmark-operator and development interface**. It is not a
-system-under-test interface. Connecting an agent to it as-is would invalidate diagnosis benchmarks.
-
-## Recommendation (not implemented)
-
-Define the observable view explicitly, before building UNS, KG, i3X or MCP layers:
-
-* an allow-list of entity properties by kind (e.g. `vibration` yes, `health` no);
-* transmitted values only;
-* events without `correlation_id` / `causation_id`, or with operational causation only;
-* no boundary, no coupling, no exports, no scenario files, no internal states.
-
-Serve it from a separate route tree or process, and test it negatively: assert the absence of every
-item above.
+* **No authentication.** The boundary is the route namespace. A system under test must be given the
+  operational routes only (for example through a proxy or a future MCP layer that maps only them).
+* **Control routes** (`/api/simulation/*` lifecycle, `/api/operator/*`) are operational commands.
+  `POST /api/simulation/create` accepts an inline scenario, which can contain faults (decision D5).
+* **Legitimate but informative observations:** utility meter readings (header pressure, supply
+  temperature, voltage) are noise-free algebraic functions of capability. They model real instruments
+  and stay operational, but they are cleaner than real instruments (decision D1).
 
 Source:
-- `api/service.py` — `SimulatorService.get_events`, `SimulatorService.get_process_image`, `SimulatorService.get_inventory`, `SimulatorService.current_scenario_with_faults`
-- `api/export.py` — `build_bundle`
-- `simulator/inventory/__init__.py` — `InventoryModule.setup`
+- `api/operational.py` — `OperationalEventView`, `hidden_properties`, `manifest`
+- `api/service.py` — `SimulatorService.get_events`, `SimulatorService.get_manifest`
+- `tests/test_operational_boundary.py`

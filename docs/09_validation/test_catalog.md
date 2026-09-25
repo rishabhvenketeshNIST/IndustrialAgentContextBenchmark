@@ -1,6 +1,6 @@
 # Test catalog
 
-Status at the time of writing: **83 tests, 83 passed**, about 55 s on the development machine
+Status at the time of writing: **104 tests, 104 passed**, about 80 s on the development machine
 (`python -m pytest`, Fortran backend). Tests marked "Fortran" are skipped when the library is not built.
 The count includes parametrisations.
 
@@ -80,9 +80,40 @@ choice).
 | `test_required_operations_exist` | the required GET routes answer 200 | response schemas |
 | `test_simulation_controls` | speed bounds, run_until, reset with a new duration | real-time pacing |
 | `test_operator_actions_and_validation` | setpoint change, cascade protection (400), unknown action (400), 404, event filtering | — |
-| `test_fault_injection_is_benchmark_only` | fault ops only under /api/benchmark; FAULT_* absent from /api/events; ground truth under /api/benchmark; dropout visible as BAD | absence of *other* ground truth on operational routes (it is present) |
+| `test_fault_injection_is_benchmark_only` | fault ops only under /api/benchmark; FAULT_* absent from /api/events; ground truth under /api/benchmark; dropout visible as BAD | the rest of the boundary (see test_operational_boundary.py) |
 | `test_export` | JSON keys and CSV files; measurements header | content correctness |
 | `test_scenario_save_duplicate` | save, duplicate, no silent overwrite | — |
+
+## tests/test_contract.py (10): canonical contract vs implementation
+
+| Test | Proves | Does NOT prove |
+|---|---|---|
+| `test_contract_version_describes_current_simulator` | the contract names the current simulator version | — |
+| `test_event_types_and_visibility_match_contract` | every event type, visibility and id sequence is in the contract, and vice versa | payload schemas |
+| `test_tep_boundary_couplings_match_contract` | the 15 enterprise → TEP couplings and the 2 uncoupled parameters match the contract | the physical accuracy of the couplings |
+| `test_only_tep_boundary_relations_write_into_tep` | no relation writes a process variable; only `tep_boundary` relations write boundary parameters | Fortran writes outside relations (see the coupling contract) |
+| `test_every_entity_property_has_contract_semantics` | every property produced in the demo has a semantic class | properties that appear only in other scenarios |
+| `test_metadata_tags_agree_with_contract_observability` | properties are tagged model-internal exactly when the contract says so | — |
+| `test_operational_boundary_rules_match_contract` | withheld event types, payload redactions and the status mapping match the contract | — |
+| `test_collections_match_contract` | record collections match the contract; faults are benchmark | — |
+| `test_process_variable_catalog_matches_contract` | XMEAS/XMV/IDV counts, loop count and periods | per-variable semantics |
+| `test_every_api_route_is_classified` | every `/api` route is classified; only `/api/benchmark/*` routes are benchmark | — |
+
+## tests/test_operational_boundary.py (11): operational information boundary
+
+| Test | Proves | Does NOT prove |
+|---|---|---|
+| `test_operational_routes_do_not_reveal_fault_or_scenario_identity` | a crawl of every operational route at 01:15 and at the end of the demo contains no fault id or type, scenario id or name, run id, config hash, truth-bearing key, or DEGRADED/CONSTRAINED value | inference from legitimate instrument readings (by design) |
+| `test_model_internal_properties_are_hidden_and_indistinguishable_from_missing` | hidden properties are absent and answer exactly like missing ones | — |
+| `test_hidden_degradation_is_not_reported_as_status` | internally DEGRADED asset and utility; operationally RUNNING and no utility status; no DEGRADED events | — |
+| `test_operational_event_stream_is_self_contained_and_gap_free` | contiguous `OE-` ids; correlation and causation stay inside the stream; redacted payloads; alarm → work order link kept | — |
+| `test_operational_stream_matches_fault_free_run_until_the_first_symptom` | before 01:20:33 the operational stream equals that of the scenario without the fault | behaviour after the first symptom (it legitimately differs) |
+| `test_manifest_and_simulation_state_carry_no_scenario_identity` | operational manifest fields; no scenario block | — |
+| `test_history_and_process_image_exclude_truth` | no `TRUE:` or hidden series; no boundary, true XMEAS or IDV | — |
+| `test_truth_routes_are_not_operational` | the moved truth routes no longer exist outside `/api/benchmark` | authentication (there is none) |
+| `test_evaluator_routes_retain_the_true_cause` | evaluator routes carry the fault, true correlation, `operational_id`, health and boundary | — |
+| `test_cooling_water_utilization_equals_valve_position` | CW utilization equals XMV(10)/100 of the previous step, which is why it is operational | — |
+| `test_alarm_sources_are_operational` | no alarm is defined on a hidden property | — |
 
 ## Not covered by any test
 
@@ -94,7 +125,7 @@ main ones:
 * **Workflows:** inspection findings; planned maintenance; technician shifts; the QUARANTINE decision
   threshold; warehouse dispatch.
 * **Runtime:** the real-time runner; the UI in a browser; the event-cursor behaviour of
-  `/api/ui/snapshot`.
+  `/api/benchmark/ui/snapshot`.
 
 Source:
 - `tests/conftest.py` — `requires_fortran`, `make_engine`, `demo_run`

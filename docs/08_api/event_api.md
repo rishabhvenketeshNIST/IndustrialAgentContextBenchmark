@@ -1,38 +1,48 @@
 # Event API
 
-## `GET /api/events`
+## `GET /api/events` (operational stream)
 
 | Query | Meaning |
 |---|---|
 | `types=A,B` | filter by event type names |
 | `since=<s>` | simulation_time ≥ s |
 | `target=<id>` | exact target |
-| `after_id=EV-…` | cursor: only `EV-` events after this id (lifecycle `LC-` events are always included) |
+| `after_id=OE-…` | cursor: only `OE-` events after this id (lifecycle `LC-` events are always included) |
 | `limit` (≤ 20000, default 500) | keep the **last** `limit` matches |
 
-Always `include_benchmark=False`: `FAULT_*` events are never returned here. Operational events are
-returned **with their `correlation_id` and `causation_id`**, which may name a fault
-([event model](../05_state_and_events/event_model.md)).
+The operational stream is derived from the canonical event log by `api/operational.py`
+([canonical contract §16](../CANONICAL_SIMULATOR_CONTRACT.md#16-events)):
 
-Response: a list of `Event.to_dict()`: `event_id, timestamp, simulation_time, type, source, target,
-payload, correlation_id, causation_id, severity, visibility`.
+* **Withheld:**
+  * `FAULT_*`;
+  * `UTILITY_STATE_CHANGED` and `EQUIPMENT_DEGRADED`, which record changes of model-internal state;
+  * `EQUIPMENT_STATE_CHANGED` between RUNNING and DEGRADED.
+* **Ids:** simulation events are renumbered `OE-nnnnnnn` over the operational stream, so there are
+  no gaps. `LC-` ids are unchanged.
+* **Correlation:** `causation_id` and `correlation_id` come from operational causation only. For
+  example, a work order points to the alarm that raised it; nothing points to a fault.
+* **Payloads:** health values, fault ids, the fault-vs-wear failure reason and scenario identity are
+  removed.
 
-## Incremental polling (as the UI does)
+Response: a list of `event_id, timestamp, simulation_time, type, source, target, payload,
+correlation_id, causation_id, severity`.
 
-`GET /api/ui/snapshot?after_event=<last EV id>` returns the new operational events (up to 300) together
-with the rest of the snapshot.
+## `GET /api/benchmark/events` (evaluator)
 
-## Benchmark events
+The canonical events (`Event.to_dict()`, with `EV-` ids and true correlation, e.g. `F-COOL-001`).
+Each carries `operational_id`: its `OE-`/`LC-` id in the operational stream, or `null` if that
+stream withholds it. Same filters; `include_benchmark=true` adds `FAULT_*` events. The web UI
+(benchmark console) uses this route and `GET /api/benchmark/ui/snapshot?after_event=<last EV id>`.
 
-`GET /api/benchmark/ground-truth?limit=` returns only `visibility=benchmark` events, plus cause
-channels, the causal registry and sensor overlays ([benchmark API](benchmark_api.md)).
+## Benchmark events and exports
 
-## Exports
-
-`/api/export/json` and `/api/export/csv` (`events.csv`) include **all** events, benchmark ones included
-([exports](../10_operation/exports.md)).
+* **Ground truth:** `GET /api/benchmark/ground-truth?limit=` returns the `visibility=benchmark`
+  events, plus cause channels, the causal registry and sensor overlays ([benchmark API](benchmark_api.md)).
+* **Exports:** `/api/benchmark/export/json` and `/api/benchmark/export/csv` (`events.csv`) include all
+  canonical events ([exports](../10_operation/exports.md)).
 
 Source:
+- `api/operational.py` — `OperationalEventView`
 - `api/service.py` — `SimulatorService.get_events`
 - `simulator/events/__init__.py` — `EventBus.query`
-- `tests/test_api_ui.py` — `test_fault_injection_is_benchmark_only`
+- `tests/test_operational_boundary.py`

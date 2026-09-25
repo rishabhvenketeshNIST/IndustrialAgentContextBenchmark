@@ -11,8 +11,8 @@ transcribed in `simulator/tep/catalog.py`; the equipment binding comes from `con
 * **Measured** variables; never written by the enterprise layer (see docs/04_coupling/coupling_contract.md).
 * **Readers** lists every consumer found in the implementation: native loops, alarms, coupling
   relations, quality tests, inventory metering, production metering.
-* **Agent-visible (current system)**: transmitted values via `/api/process/measurements`,
-  `/api/entities/{id}`; true values via `/api/history` series `TRUE:XMEAS(n)` and exports.
+* **Operational API**: transmitted values via `/api/process/measurements` and `/api/entities/{id}`.
+  True values only on benchmark routes (`/api/benchmark/history` series `TRUE:XMEAS(n)`, exports).
 
 | Var | Tag | Name | Unit | Type | Base | Noise σ | Bound to | Area | Read by |
 |---|---|---|---|---|---|---|---|---|---|

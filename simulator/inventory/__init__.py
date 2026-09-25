@@ -95,8 +95,11 @@ class InventoryModule(SimulationModule):
             rec.properties.update({"material": mid, "capacity_kg": float(spec["capacity_kg"]), "reserved_kg": 0.0})
             rec.units.update({"quantity_kg": "kg", "capacity_kg": "kg", "reserved_kg": "kg", "available_kg": "kg",
                               "level_pct": "%", "consumption_kg_h": "kg/h"})
-            rec.meta["unobservable"] = sorted(self.materials_cfg[mid].get("attributes", {}).keys()) + \
-                ["supply_availability"]
+            # lot composition and its deviation from the certificate are physical truth that no plant
+            # instrument measures (metadata only). supply_availability is not listed: it is a function of
+            # released stock (usable_kg) and the configured heel/ramp, i.e. of operational information.
+            attrs = sorted(self.materials_cfg[mid].get("attributes", {}).keys())
+            rec.meta["unobservable"] = attrs + [f"{a}_deviation" for a in attrs]
             self._posted[sid] = 0.0
             self._shortage[sid] = False
             self._status[sid] = "NORMAL"

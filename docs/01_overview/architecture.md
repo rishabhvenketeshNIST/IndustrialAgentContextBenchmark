@@ -175,7 +175,7 @@ How it differs from the conceptual flow:
 
 ```mermaid
 flowchart LR
-  UI["ui/js/app.js<br/>poll every 1 s"] -->|"GET /api/ui/snapshot"| APP["api/app.py"]
+  UI["ui/js/app.js<br/>poll every 1 s"] -->|"GET /api/benchmark/ui/snapshot"| APP["api/app.py"]
   UI -->|"GET tab data every 3 s, trends every 2 s"| APP
   UI -->|"POST /api/simulation/*, /api/operator/*"| APP
   UI -->|"Fault Injection tab: /api/benchmark/*"| APP
@@ -188,7 +188,7 @@ flowchart LR
 The UI holds no simulation state; it renders what the API returns. Service methods that read engine
 state take the same re-entrant lock as the runner, so they never see a half-finished step. The exception
 is `get_simulation_state` (`GET /api/simulation`), which reads without the lock: a status poll can
-observe values from two different steps. `/api/ui/snapshot` calls it inside the lock.
+observe values from two different steps. `/api/benchmark/ui/snapshot` calls it inside the lock.
 
 Source:
 - `run.py` — `main`, `ensure_fortran`, `check_deps`

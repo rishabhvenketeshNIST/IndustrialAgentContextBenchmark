@@ -1,7 +1,9 @@
 """REST API + static UI server.
 
-Operational routes: /api/...           (candidate surface for a future agent interface)
-Benchmark routes:   /api/benchmark/... (fault injection and ground truth - benchmark operator only)
+Operational routes: /api/...           operational view only (api/operational.py): no ground truth;
+                                       the candidate surface for a future agent interface
+Benchmark routes:   /api/benchmark/... fault injection, ground truth, evaluator views and the benchmark
+                                       console (web UI) - benchmark operator / evaluator only
 """
 from __future__ import annotations
 
@@ -132,7 +134,7 @@ def create_app(service: Optional[SimulatorService] = None, autoload: Optional[st
 
     @app.get("/api/simulation/manifest")
     def manifest():
-        return svc._eng().run_manifest()
+        return svc.get_manifest()
 
     # ---------------------------------------------------------------- model
     @app.get("/api/enterprise")
@@ -196,10 +198,6 @@ def create_app(service: Optional[SimulatorService] = None, autoload: Optional[st
     def get_catalog():
         return svc.get_catalog()
 
-    @app.get("/api/process/internal-states")
-    def get_internal_states():
-        return svc.get_internal_states()
-
     # ---------------------------------------------------------------- operations
     @app.get("/api/alarms")
     def get_alarms(active_only: bool = False):
@@ -234,10 +232,6 @@ def create_app(service: Optional[SimulatorService] = None, autoload: Optional[st
     def get_production():
         return svc.get_production()
 
-    @app.get("/api/coupling")
-    def get_coupling():
-        return svc.get_coupling()
-
     @app.get("/api/history")
     def get_history(series: str, since: Optional[int] = None, max_points: int = Query(1500, ge=10, le=20000)):
         return svc.get_history([s for s in series.split("|") if s], since, max_points)
@@ -254,53 +248,6 @@ def create_app(service: Optional[SimulatorService] = None, autoload: Optional[st
     @app.post("/api/operator/{action}")
     def operator_action(action: str, params: Dict[str, Any] = Body(default={})):
         return {"ok": True, "result": svc.operator_action(action, params, "operator")}
-
-    # ---------------------------------------------------------------- scenarios
-    @app.get("/api/scenarios")
-    def list_scenarios():
-        return svc.list_scenarios()
-
-    @app.get("/api/scenarios/current")
-    def current_scenario():
-        return svc.current_scenario_with_faults()
-
-    @app.get("/api/scenarios/{scenario_id}")
-    def get_scenario(scenario_id: str):
-        return svc.get_scenario(scenario_id)
-
-    @app.post("/api/scenarios")
-    def save_scenario(scenario: Dict[str, Any] = Body(...), overwrite: bool = False):
-        return svc.save_scenario(scenario, overwrite)
-
-    @app.post("/api/scenarios/{scenario_id}/duplicate")
-    def duplicate_scenario(scenario_id: str, req: DuplicateRequest):
-        return svc.duplicate_scenario(scenario_id, req.new_id, req.new_name)
-
-    # ---------------------------------------------------------------- export
-    @app.get("/api/export/json")
-    def export_json():
-        data = svc.export_json()
-        rid = data["run_manifest"]["run_id"]
-        return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="{rid}.json"'})
-
-    @app.get("/api/export/csv")
-    def export_csv():
-        rid = svc._eng().state.run["run_id"]
-        return Response(svc.export_csv_zip(), media_type="application/zip",
-                        headers={"Content-Disposition": f'attachment; filename="{rid}.zip"'})
-
-    # ---------------------------------------------------------------- UI polling snapshot
-    @app.get("/api/ui/snapshot")
-    def ui_snapshot(after_event: Optional[str] = None):
-        with svc.lock:
-            if svc.engine is None:
-                return {"simulation": svc.get_simulation_state()}
-            return {"simulation": svc.get_simulation_state(), "hierarchy": svc.get_hierarchy(),
-                    "process": svc.get_process_image(), "alarms": svc.get_alarms(),
-                    "utilities": svc.get_utilities(),
-                    "equipment": {a: svc._eng().state.entity(a).properties for a in svc._eng().equipment.assets},
-                    "production": svc.get_production(),
-                    "events": svc.get_events(after_id=after_event, limit=300)}
 
     # ---------------------------------------------------------------- benchmark (fault injection)
     @app.get("/api/benchmark/faults/catalog")
@@ -338,6 +285,106 @@ def create_app(service: Optional[SimulatorService] = None, autoload: Optional[st
     @app.get("/api/benchmark/ground-truth")
     def ground_truth(limit: int = 500):
         return {"events": bench.ground_truth_events(limit), "effects": bench.fault_effects()}
+
+    # ---------------------------------------------------------------- benchmark: evaluator / console views
+    # Canonical (unredacted) views of what the operational routes serve through the operational boundary.
+    @app.get("/api/benchmark/simulation")
+    def bench_simulation():
+        with svc.lock:
+            return svc.get_simulation_state(truth=True)
+
+    @app.get("/api/benchmark/manifest")
+    def bench_manifest():
+        return svc.get_manifest(truth=True)
+
+    @app.get("/api/benchmark/entities/{entity_id}")
+    def bench_entity(entity_id: str):
+        return svc.get_entity(entity_id, truth=True)
+
+    @app.get("/api/benchmark/utilities")
+    def bench_utilities():
+        return svc.get_utilities(truth=True)
+
+    @app.get("/api/benchmark/maintenance")
+    def bench_maintenance():
+        return svc.get_maintenance(truth=True)
+
+    @app.get("/api/benchmark/inventory")
+    def bench_inventory():
+        return svc.get_inventory(truth=True)
+
+    @app.get("/api/benchmark/events")
+    def bench_events(since: Optional[int] = None, types: Optional[str] = None,
+                     limit: int = Query(500, le=20000), after_id: Optional[str] = None,
+                     target: Optional[str] = None, include_benchmark: bool = False):
+        return svc.get_events(since, types.split(",") if types else None, limit, after_id, include_benchmark,
+                              target, truth=True)
+
+    @app.get("/api/benchmark/history")
+    def bench_history(series: str, since: Optional[int] = None,
+                      max_points: int = Query(1500, ge=10, le=20000)):
+        return svc.get_history([x for x in series.split("|") if x], since, max_points, truth=True)
+
+    @app.get("/api/benchmark/history/catalog")
+    def bench_history_catalog():
+        return svc.get_history_catalog(truth=True)
+
+    @app.get("/api/benchmark/process/image")
+    def bench_process_image():
+        return svc.get_process_image(truth=True)
+
+    @app.get("/api/benchmark/process/internal-states")
+    def bench_internal_states():
+        return svc.get_internal_states()
+
+    @app.get("/api/benchmark/coupling")
+    def bench_coupling():
+        return svc.get_coupling()
+
+    @app.get("/api/benchmark/scenarios")
+    def list_scenarios():
+        return svc.list_scenarios()
+
+    @app.get("/api/benchmark/scenarios/current")
+    def current_scenario():
+        return svc.current_scenario_with_faults()
+
+    @app.get("/api/benchmark/scenarios/{scenario_id}")
+    def get_scenario(scenario_id: str):
+        return svc.get_scenario(scenario_id)
+
+    @app.post("/api/benchmark/scenarios")
+    def save_scenario(scenario: Dict[str, Any] = Body(...), overwrite: bool = False):
+        return svc.save_scenario(scenario, overwrite)
+
+    @app.post("/api/benchmark/scenarios/{scenario_id}/duplicate")
+    def duplicate_scenario(scenario_id: str, req: DuplicateRequest):
+        return svc.duplicate_scenario(scenario_id, req.new_id, req.new_name)
+
+    @app.get("/api/benchmark/export/json")
+    def export_json():
+        data = svc.export_json()
+        rid = data["run_manifest"]["run_id"]
+        return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="{rid}.json"'})
+
+    @app.get("/api/benchmark/export/csv")
+    def export_csv():
+        rid = svc._eng().state.run["run_id"]
+        return Response(svc.export_csv_zip(), media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{rid}.zip"'})
+
+    @app.get("/api/benchmark/ui/snapshot")
+    def ui_snapshot(after_event: Optional[str] = None):
+        """Polling snapshot for the benchmark console (the web UI)."""
+        with svc.lock:
+            if svc.engine is None:
+                return {"simulation": svc.get_simulation_state(truth=True)}
+            return {"simulation": svc.get_simulation_state(truth=True), "hierarchy": svc.get_hierarchy(truth=True),
+                    "process": svc.get_process_image(truth=True), "alarms": svc.get_alarms(),
+                    "utilities": svc.get_utilities(truth=True),
+                    "equipment": {a: svc._eng().state.entity(a).properties for a in svc._eng().equipment.assets},
+                    "production": svc.get_production(),
+                    "events": svc.get_events(after_id=after_event, limit=300, truth=True)}
 
     # ---------------------------------------------------------------- UI
     if UI_DIR.exists():

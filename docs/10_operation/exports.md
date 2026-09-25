@@ -5,8 +5,8 @@ completed).
 
 | Route / tool | Format | File name |
 |---|---|---|
-| `GET /api/export/json` | one JSON bundle | `<run_id>.json` |
-| `GET /api/export/csv` | zip of CSV files + manifest | `<run_id>.zip` |
+| `GET /api/benchmark/export/json` | one JSON bundle | `<run_id>.json` |
+| `GET /api/benchmark/export/csv` | zip of CSV files + manifest | `<run_id>.zip` |
 | `python scripts/run_demo.py` | both, into `exports/` | same |
 
 ## JSON bundle (`build_bundle`)

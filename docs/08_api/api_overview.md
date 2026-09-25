@@ -12,10 +12,11 @@
 ```mermaid
 flowchart LR
   subgraph REST["/api (FastAPI)"]
-    OPS["/api/simulation · /api/enterprise|site|areas|hierarchy|equipment|entities<br/>/api/process/* · /api/alarms · /api/events · /api/utilities<br/>/api/maintenance · /api/inventory · /api/quality · /api/production*<br/>/api/coupling · /api/history* · /api/operator/* · /api/scenarios* · /api/export/*<br/>/api/ui/snapshot"]
-    BEN["/api/benchmark/faults* · /api/benchmark/ground-truth"]
+    OPS["operational: /api/simulation · /api/enterprise|site|areas|hierarchy|equipment|entities<br/>/api/process/* · /api/alarms · /api/events · /api/utilities<br/>/api/maintenance · /api/inventory · /api/quality · /api/production*<br/>/api/history* · /api/operator/*"]
+    BEN["benchmark: /api/benchmark/faults* · ground-truth · evaluator views<br/>(simulation, manifest, entities, events, history, process, coupling)<br/>scenarios* · export/* · ui/snapshot"]
   end
-  OPS --> S["SimulatorService"]
+  OPS --> BND["api/operational.py<br/>(operational boundary)"] --> S["SimulatorService"]
+  BEN --> S
   BEN --> B["BenchmarkFaultAPI"]
   S --> E["SimulationEngine"]
   B --> E
@@ -27,6 +28,10 @@ flowchart LR
   there are no `get_reactor_temperature`-style routes.
 * **Fault injection only on `BenchmarkFaultAPI` / `/api/benchmark/*`.** The operational service object
   has no fault methods.
+* **Operational boundary.** Every route outside `/api/benchmark/*` returns the operational view
+  (`api/operational.py`): no ground truth, no model-internal state. `SimulatorService` read methods
+  default to it; `truth=True` is used only by `/api/benchmark/*`
+  ([canonical contract §20](../CANONICAL_SIMULATOR_CONTRACT.md#20-ground-truth)).
 * **Error mapping:**
   * `KeyError` → 404;
   * `ValueError`, `ConfigError`, `FaultValidationError`, `TEPAdapterError` → 400;

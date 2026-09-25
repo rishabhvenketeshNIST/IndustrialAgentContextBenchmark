@@ -22,9 +22,13 @@ curl -X POST localhost:8000/api/benchmark/faults -H "Content-Type: application/j
           "progression": {"mode": "gradual", "ramp_s": 1200}}'
 curl -X POST localhost:8000/api/benchmark/faults/F-1/start
 
-# watch the consequences (operational view)
-curl "localhost:8000/api/events?types=UTILITY_STATE_CHANGED,ALARM_ACTIVATED"
-curl "localhost:8000/api/history?series=XMV(10)|UT-CW-REACTOR.capacity_fraction"
+# watch the consequences (operational view: what the plant can observe)
+curl "localhost:8000/api/events?types=ALARM_ACTIVATED,MAINTENANCE_REQUESTED"
+curl "localhost:8000/api/history?series=XMV(10)|XMEAS(21)|UT-CW-REACTOR.pressure"
+
+# ground truth for the evaluator (benchmark routes)
+curl "localhost:8000/api/benchmark/events?types=UTILITY_STATE_CHANGED,ALARM_ACTIVATED"
+curl "localhost:8000/api/benchmark/history?series=UT-CW-REACTOR.capacity_fraction|WU-CWP-101A.health"
 ```
 
 ## Python without HTTP

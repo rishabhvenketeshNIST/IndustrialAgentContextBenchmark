@@ -4,53 +4,54 @@
 All event types in `simulator/events/__init__.py` (`EventType`). *Referenced in* is a static scan
 of the source for `EventType.<NAME>` (publishers and subscribers). *Demo count* and *payload keys* are
 observed in a full SCN-COOL-001 run. Visibility is `benchmark` for `BENCHMARK_EVENT_TYPES`; lifecycle
-events use the separate `LC-` id sequence.
+events use the separate `LC-` id sequence. *Operational stream* states how `/api/events` presents the
+type (`api/operational.py`; operational ids are `OE-`).
 
-| Type | Visibility | Id prefix | Referenced in | Demo count | Payload keys observed |
-|---|---|---|---|---|---|
-| SIMULATION_STARTED | operational | LC- | simulator/simulation/engine.py | 1 | duration_seconds, run_id, scenario_id, seed |
-| SIMULATION_PAUSED | operational | LC- | api/service.py | 0 | - |
-| SIMULATION_RESUMED | operational | LC- | api/service.py | 0 | - |
-| SIMULATION_RESET | operational | LC- | api/service.py | 0 | - |
-| SIMULATION_COMPLETED | operational | EV- | simulator/simulation/engine.py | 1 | run_id, simulated_seconds |
-| FAULT_CREATED | benchmark | EV- | simulator/faults/engine.py | 1 | category, fault_id, fault_type, severity, spec, target |
-| FAULT_SCHEDULED | benchmark | EV- | simulator/faults/engine.py | 1 | category, fault_id, fault_type, severity, start_time, target |
-| FAULT_STARTED | benchmark | EV- | simulator/faults/engine.py | 1 | category, expected_effects, fault_id, fault_type, observability, severity, target |
-| FAULT_STOPPED | benchmark | EV- | simulator/faults/engine.py | 1 | category, fault_id, fault_type, persistent_effect, reason, severity, target |
-| FAULT_RESET | benchmark | EV- | simulator/faults/engine.py | 0 | - |
-| EQUIPMENT_STATE_CHANGED | operational | EV- | simulator/equipment/__init__.py | 4 | health, new, old, reason |
-| EQUIPMENT_DEGRADED | operational | EV- | simulator/equipment/__init__.py | 1 | band, health, threshold |
-| EQUIPMENT_FAILED | operational | EV- | simulator/equipment/__init__.py<br>simulator/maintenance/__init__.py | 0 | - |
-| EQUIPMENT_REPAIRED | operational | EV- | simulator/equipment/__init__.py<br>simulator/faults/engine.py | 1 | cleared_fault_effects, health_after, health_before, work_order |
-| PROCESS_SHUTDOWN | operational | EV- | simulator/simulation/engine.py | 0 | - |
-| CONTROL_MODE_CHANGED | operational | EV- | simulator/simulation/process_interface.py | 0 | - |
-| SETPOINT_CHANGED | operational | EV- | simulator/simulation/process_interface.py | 0 | - |
-| MANIPULATED_VARIABLE_CHANGED | operational | EV- | simulator/simulation/process_interface.py | 0 | - |
-| UTILITY_STATE_CHANGED | operational | EV- | simulator/utilities/__init__.py | 3 | availability, available_capacity, new, old, utilization |
-| ALARM_ACTIVATED | operational | EV- | simulator/alarms/__init__.py<br>simulator/maintenance/__init__.py | 13 | alarm_id, category, equipment_id, maintenance, maintenance_priority, maintenance_target, message, priority, property, source, threshold, type, value |
-| ALARM_ACKNOWLEDGED | operational | EV- | simulator/alarms/__init__.py | 0 | - |
-| ALARM_CLEARED | operational | EV- | simulator/alarms/__init__.py | 10 | alarm_id, state, value |
-| PRODUCTION_ORDER_CREATED | operational | EV- | simulator/scheduling/__init__.py | 2 | order_id, planned_end, planned_start, priority, product_id, quantity, unit |
-| PRODUCTION_ORDER_RELEASED | operational | EV- | simulator/inventory/__init__.py<br>simulator/production/orders.py | 2 | material_requirements, net_kg, new, old, order_id, product_id, quantity, reason |
-| PRODUCTION_ORDER_STARTED | operational | EV- | simulator/production/orders.py | 2 | net_kg, new, old, order_id, product_id, quantity, reason |
-| PRODUCTION_ORDER_PAUSED | operational | EV- | simulator/production/orders.py | 0 | - |
-| PRODUCTION_ORDER_RESUMED | operational | EV- | simulator/production/orders.py | 0 | - |
-| PRODUCTION_ORDER_BLOCKED | operational | EV- | simulator/production/orders.py | 0 | - |
-| PRODUCTION_ORDER_COMPLETED | operational | EV- | simulator/inventory/__init__.py<br>simulator/production/orders.py | 2 | net_kg, new, old, order_id, product_id, quantity, reason |
-| PRODUCTION_ORDER_CANCELLED | operational | EV- | simulator/inventory/__init__.py<br>simulator/production/orders.py | 0 | - |
-| PRODUCTION_STATE_CHANGED | operational | EV- | simulator/production/__init__.py | 2 | new, old, rate_kg_h, reason |
-| MAINTENANCE_REQUESTED | operational | EV- | simulator/maintenance/__init__.py | 2 | description, kind, priority, requested_by, work_order_id |
-| MAINTENANCE_SCHEDULED | operational | EV- | simulator/inventory/__init__.py<br>simulator/maintenance/__init__.py | 2 | duration_s, isolates_equipment, kind, parts, scheduled_start_s, technician, work_order_id |
-| MAINTENANCE_WAITING | operational | EV- | simulator/maintenance/__init__.py | 0 | - |
-| MAINTENANCE_STARTED | operational | EV- | simulator/equipment/__init__.py<br>simulator/inventory/__init__.py<br>simulator/maintenance/__init__.py | 2 | description, duration_s, isolates_equipment, kind, parts, technician, work_order_id |
-| MAINTENANCE_COMPLETED | operational | EV- | simulator/equipment/__init__.py<br>simulator/maintenance/__init__.py | 2 | duration_s, findings, isolates_equipment, kind, restore_health, technician, work_order_id |
-| QUALITY_SAMPLE_TAKEN | operational | EV- | simulator/quality/__init__.py | 11 | lot_id, product_id, sample_id |
-| QUALITY_RESULT_CREATED | operational | EV- | simulator/quality/__init__.py | 12 | failing_tests, lot_id, overall, results, sample_id, subject |
-| LOT_STATE_CHANGED | operational | EV- | simulator/inventory/__init__.py<br>simulator/production/__init__.py<br>simulator/quality/__init__.py<br>simulator/warehouse/__init__.py | 13 | lot_id, lot_type, new, old, order_id, qc_due_s, quantity_kg, reason |
-| MATERIAL_CONSUMED | operational | EV- | simulator/inventory/__init__.py | 49 | item_type, lots, material, parts, period_s, quantity_kg, work_order_id |
-| MATERIAL_RECEIVED | operational | EV- | simulator/inventory/__init__.py<br>simulator/quality/__init__.py | 1 | attributes, item, item_type, lot_id, po_id, quantity, supplier |
-| MATERIAL_ORDERED | operational | EV- | simulator/inventory/__init__.py | 2 | due_s, item, item_type, po_id, quantity, supplier |
-| MATERIAL_SHORTAGE | operational | EV- | simulator/inventory/__init__.py | 0 | - |
-| MATERIAL_SHORTAGE_CLEARED | operational | EV- | simulator/inventory/__init__.py | 0 | - |
-| INVENTORY_MOVED | operational | EV- | simulator/inventory/__init__.py<br>simulator/warehouse/__init__.py | 4 | from, lot_id, lots, quantity_kg, reason, released_stock_kg, required_kg, shipment_id, status, to |
-| OPERATOR_ACTION | operational | EV- | simulator/operator/__init__.py | 0 | - |
+| Type | Visibility | Operational stream | Id prefix | Referenced in | Demo count | Payload keys observed |
+|---|---|---|---|---|---|---|
+| SIMULATION_STARTED | operational | yes, without run_id, scenario_id, seed | LC- | api/operational.py<br>simulator/simulation/engine.py | 1 | duration_seconds, run_id, scenario_id, seed |
+| SIMULATION_PAUSED | operational | yes | LC- | api/service.py | 0 | - |
+| SIMULATION_RESUMED | operational | yes | LC- | api/service.py | 0 | - |
+| SIMULATION_RESET | operational | yes, without scenario_id | LC- | api/operational.py<br>api/service.py | 0 | - |
+| SIMULATION_COMPLETED | operational | yes, without run_id | EV- | api/operational.py<br>simulator/simulation/engine.py | 1 | run_id, simulated_seconds |
+| FAULT_CREATED | benchmark | withheld | EV- | simulator/faults/engine.py | 1 | category, fault_id, fault_type, severity, spec, target |
+| FAULT_SCHEDULED | benchmark | withheld | EV- | simulator/faults/engine.py | 1 | category, fault_id, fault_type, severity, start_time, target |
+| FAULT_STARTED | benchmark | withheld | EV- | simulator/faults/engine.py | 1 | category, expected_effects, fault_id, fault_type, observability, severity, target |
+| FAULT_STOPPED | benchmark | withheld | EV- | simulator/faults/engine.py | 1 | category, fault_id, fault_type, persistent_effect, reason, severity, target |
+| FAULT_RESET | benchmark | withheld | EV- | simulator/faults/engine.py | 0 | - |
+| EQUIPMENT_STATE_CHANGED | operational | yes, except RUNNING↔DEGRADED | EV- | api/operational.py<br>simulator/equipment/__init__.py | 4 | health, new, old, reason |
+| EQUIPMENT_DEGRADED | operational | withheld | EV- | api/operational.py<br>simulator/equipment/__init__.py | 1 | band, health, threshold |
+| EQUIPMENT_FAILED | operational | yes, without health, reason | EV- | api/operational.py<br>simulator/equipment/__init__.py<br>simulator/maintenance/__init__.py | 0 | - |
+| EQUIPMENT_REPAIRED | operational | yes, without health_before, health_after, cleared_fault_effects | EV- | api/operational.py<br>simulator/equipment/__init__.py<br>simulator/faults/engine.py | 1 | cleared_fault_effects, health_after, health_before, work_order |
+| PROCESS_SHUTDOWN | operational | yes | EV- | simulator/simulation/engine.py | 0 | - |
+| CONTROL_MODE_CHANGED | operational | yes | EV- | simulator/simulation/process_interface.py | 0 | - |
+| SETPOINT_CHANGED | operational | yes | EV- | simulator/simulation/process_interface.py | 0 | - |
+| MANIPULATED_VARIABLE_CHANGED | operational | yes | EV- | simulator/simulation/process_interface.py | 0 | - |
+| UTILITY_STATE_CHANGED | operational | withheld | EV- | api/operational.py<br>simulator/utilities/__init__.py | 3 | availability, available_capacity, new, old, utilization |
+| ALARM_ACTIVATED | operational | yes | EV- | simulator/alarms/__init__.py<br>simulator/maintenance/__init__.py | 13 | alarm_id, category, equipment_id, maintenance, maintenance_priority, maintenance_target, message, priority, property, source, threshold, type, value |
+| ALARM_ACKNOWLEDGED | operational | yes | EV- | simulator/alarms/__init__.py | 0 | - |
+| ALARM_CLEARED | operational | yes | EV- | simulator/alarms/__init__.py | 10 | alarm_id, state, value |
+| PRODUCTION_ORDER_CREATED | operational | yes | EV- | simulator/scheduling/__init__.py | 2 | order_id, planned_end, planned_start, priority, product_id, quantity, unit |
+| PRODUCTION_ORDER_RELEASED | operational | yes | EV- | simulator/inventory/__init__.py<br>simulator/production/orders.py | 2 | material_requirements, net_kg, new, old, order_id, product_id, quantity, reason |
+| PRODUCTION_ORDER_STARTED | operational | yes | EV- | simulator/production/orders.py | 2 | net_kg, new, old, order_id, product_id, quantity, reason |
+| PRODUCTION_ORDER_PAUSED | operational | yes | EV- | simulator/production/orders.py | 0 | - |
+| PRODUCTION_ORDER_RESUMED | operational | yes | EV- | simulator/production/orders.py | 0 | - |
+| PRODUCTION_ORDER_BLOCKED | operational | yes | EV- | simulator/production/orders.py | 0 | - |
+| PRODUCTION_ORDER_COMPLETED | operational | yes | EV- | simulator/inventory/__init__.py<br>simulator/production/orders.py | 2 | net_kg, new, old, order_id, product_id, quantity, reason |
+| PRODUCTION_ORDER_CANCELLED | operational | yes | EV- | simulator/inventory/__init__.py<br>simulator/production/orders.py | 0 | - |
+| PRODUCTION_STATE_CHANGED | operational | yes | EV- | simulator/production/__init__.py | 2 | new, old, rate_kg_h, reason |
+| MAINTENANCE_REQUESTED | operational | yes | EV- | simulator/maintenance/__init__.py | 2 | description, kind, priority, requested_by, work_order_id |
+| MAINTENANCE_SCHEDULED | operational | yes | EV- | simulator/inventory/__init__.py<br>simulator/maintenance/__init__.py | 2 | duration_s, isolates_equipment, kind, parts, scheduled_start_s, technician, work_order_id |
+| MAINTENANCE_WAITING | operational | yes | EV- | simulator/maintenance/__init__.py | 0 | - |
+| MAINTENANCE_STARTED | operational | yes | EV- | simulator/equipment/__init__.py<br>simulator/inventory/__init__.py<br>simulator/maintenance/__init__.py | 2 | description, duration_s, isolates_equipment, kind, parts, technician, work_order_id |
+| MAINTENANCE_COMPLETED | operational | yes | EV- | simulator/equipment/__init__.py<br>simulator/maintenance/__init__.py | 2 | duration_s, findings, isolates_equipment, kind, restore_health, technician, work_order_id |
+| QUALITY_SAMPLE_TAKEN | operational | yes | EV- | simulator/quality/__init__.py | 11 | lot_id, product_id, sample_id |
+| QUALITY_RESULT_CREATED | operational | yes | EV- | simulator/quality/__init__.py | 12 | failing_tests, lot_id, overall, results, sample_id, subject |
+| LOT_STATE_CHANGED | operational | yes | EV- | simulator/inventory/__init__.py<br>simulator/production/__init__.py<br>simulator/quality/__init__.py<br>simulator/warehouse/__init__.py | 13 | lot_id, lot_type, new, old, order_id, qc_due_s, quantity_kg, reason |
+| MATERIAL_CONSUMED | operational | yes | EV- | simulator/inventory/__init__.py | 49 | item_type, lots, material, parts, period_s, quantity_kg, work_order_id |
+| MATERIAL_RECEIVED | operational | yes | EV- | simulator/inventory/__init__.py<br>simulator/quality/__init__.py | 1 | attributes, item, item_type, lot_id, po_id, quantity, supplier |
+| MATERIAL_ORDERED | operational | yes | EV- | simulator/inventory/__init__.py | 2 | due_s, item, item_type, po_id, quantity, supplier |
+| MATERIAL_SHORTAGE | operational | yes | EV- | simulator/inventory/__init__.py | 0 | - |
+| MATERIAL_SHORTAGE_CLEARED | operational | yes | EV- | simulator/inventory/__init__.py | 0 | - |
+| INVENTORY_MOVED | operational | yes | EV- | simulator/inventory/__init__.py<br>simulator/warehouse/__init__.py | 4 | from, lot_id, lots, quantity_kg, reason, released_stock_kg, required_kg, shipment_id, status, to |
+| OPERATOR_ACTION | operational | yes | EV- | simulator/operator/__init__.py | 0 | - |

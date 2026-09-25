@@ -112,13 +112,34 @@ def test_every_entity_property_has_contract_semantics(demo_run):
 
 @requires_fortran
 def test_metadata_tags_agree_with_contract_observability(demo_run):
-    """Properties the implementation tags as model_internal / unobservable are model_internal in the contract."""
-    props = CONTRACT["properties"]
-    for rec in demo_run.state.entities.values():
-        for prop in rec.meta.get("model_internal", []):
-            assert props["asset"][prop]["observability"] == "model_internal", (rec.id, prop)
-        for prop in rec.meta.get("unobservable", []):
-            assert props["storage"][prop]["observability"] == "model_internal", (rec.id, prop)
+    """A property is tagged model_internal/unobservable by its owning module exactly when the contract
+    classifies it model_internal. The operational boundary hides tagged properties, so this is what makes
+    the contract's observability column true on operational routes."""
+    from api.operational import hidden_properties
+    st = demo_run.state
+    lab = demo_run.config["quality"].get("laboratory")
+    lab_tests = {t["id"].lower() for p in demo_run.config["quality"]["product_specifications"].values()
+                 for t in p["tests"]}
+    for eid, rec in st.entities.items():
+        hidden = hidden_properties(rec)
+        for prop in rec.properties:
+            scope = _scope(st, demo_run.mapping, lab, eid, prop)
+            if scope not in ("asset", "storage", "utility"):
+                continue
+            spec = _lookup(CONTRACT["properties"][scope], prop, lab_tests)
+            obs = spec.get("observability_by_utility_type", {}).get(rec.meta.get("utility_type"),
+                                                                     spec["observability"])
+            assert (prop in hidden) == (obs == "model_internal"), (eid, prop, obs)
+
+
+def test_operational_boundary_rules_match_contract():
+    from api import operational
+    ev = CONTRACT["operational_boundary"]["event_stream"]
+    assert set(ev["withheld_types"]) == ({t.value for t in operational.WITHHELD_EVENT_TYPES} |
+                                         {t.value for t in BENCHMARK_EVENT_TYPES})
+    assert {k: sorted(v) for k, v in ev["payload_redactions"].items()} == \
+        {t.value: sorted(v) for t, v in operational.PAYLOAD_REDACTIONS.items()}
+    assert CONTRACT["operational_boundary"]["asset_status_mapping"] == operational.ASSET_STATUS_OPERATIONAL
 
 
 @requires_fortran

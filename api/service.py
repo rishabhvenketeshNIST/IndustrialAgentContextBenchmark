@@ -3,6 +3,10 @@
 REST routes in api/app.py are thin wrappers around these methods. Operations
 are generic (entity/property based); there are no variable-specific getters.
 
+Read operations return the *operational* view by default (api/operational.py): what plant systems
+could observe, with no ground truth. ``truth=True`` returns the canonical, unredacted view; it is used
+only by the benchmark/evaluator routes under /api/benchmark.
+
 Fault-injection operations live in the separate ``BenchmarkFaultAPI`` so a
 future agent interface can be given ``SimulatorService`` without any access to
 fault injection or fault ground truth.
@@ -24,6 +28,8 @@ from simulator.simulation.engine import SimulationEngine
 from simulator.tep import catalog
 from simulator.tep import control_scheme as cs
 from simulator.tep import available_backends
+
+from . import operational
 
 log = logging.getLogger("acme.sim")
 
@@ -79,6 +85,7 @@ class SimulatorService:
         self.speed = 10.0
         self.max_steps_per_tick = 2000
         self.error: Optional[str] = None
+        self._ops: Optional[operational.OperationalEventView] = None
         self.runner = Runner(self)
         if start_runner:
             self.runner.start()
@@ -92,6 +99,16 @@ class SimulatorService:
     @property
     def view(self) -> EnterpriseView:
         return EnterpriseView(self._eng())
+
+    def _view(self, truth: bool) -> EnterpriseView:
+        e = self._eng()
+        return self.view if truth else EnterpriseView(e, lambda eid: operational.entity_status(e.state, eid))
+
+    def _event_view(self) -> operational.OperationalEventView:
+        bus = self._eng().bus
+        if self._ops is None or self._ops.bus is not bus:
+            self._ops = operational.OperationalEventView(bus)
+        return self._ops
 
     # ------------------------------------------------------------------ simulation lifecycle
     def create_simulation(self, scenario_id: Optional[str] = None, scenario: Optional[dict] = None,
@@ -189,56 +206,74 @@ class SimulatorService:
         self.speed = validate_speed(speed)
         return self.get_simulation_state()
 
-    def get_simulation_state(self) -> dict:
+    def get_simulation_state(self, truth: bool = False) -> dict:
         e = self.engine
         if e is None:
             return {"status": "NO_SIMULATION", "backends": available_backends()}
-        return to_jsonable({
+        out = {
             "status": e.status, "running": self.runner.running, "speed": self.speed, "clock": e.clock.to_dict(),
             "duration_s": e.duration_s, "progress": e.clock.time_s / e.duration_s if e.duration_s else 0,
-            "manifest": e.manifest(), "process": {"shutdown": e.state.process.shutdown,
-                                                  "shutdown_reason": e.state.process.shutdown_reason,
-                                                  "control_mode": e.state.process.control_mode},
+            "manifest": e.manifest() if truth else operational.manifest(e.manifest()),
+            "process": {"shutdown": e.state.process.shutdown, "shutdown_reason": e.state.process.shutdown_reason,
+                        "control_mode": e.state.process.control_mode},
             "production": e.state.production, "alarms": e.alarms.summary(), "error": self.error,
-            "backends": available_backends(), "scenario": {"id": e.scenario["id"], "name": e.scenario["name"],
-                                                           "description": e.scenario["description"]}})
+            "backends": available_backends()}
+        if truth:
+            out["scenario"] = {"id": e.scenario["id"], "name": e.scenario["name"],
+                               "description": e.scenario["description"]}
+        return to_jsonable(out)
+
+    def get_manifest(self, truth: bool = False) -> dict:
+        with self.lock:
+            m = self._eng().run_manifest()
+            return to_jsonable(m if truth else operational.manifest(m))
 
     # ------------------------------------------------------------------ enterprise model
-    def get_enterprise(self) -> dict:
+    def get_enterprise(self, truth: bool = False) -> dict:
         with self.lock:
-            return to_jsonable(self.view.enterprise())
+            return to_jsonable(self._view(truth).enterprise())
 
-    def get_site(self) -> dict:
+    def get_site(self, truth: bool = False) -> dict:
         with self.lock:
-            return to_jsonable(self.view.site())
+            return to_jsonable(self._view(truth).site())
 
-    def get_areas(self) -> List[dict]:
+    def get_areas(self, truth: bool = False) -> List[dict]:
         with self.lock:
-            return to_jsonable(self.view.elements(level=EquipmentLevel.AREA.value))
+            return to_jsonable(self._view(truth).elements(level=EquipmentLevel.AREA.value))
 
-    def get_hierarchy(self) -> dict:
+    def get_hierarchy(self, truth: bool = False) -> dict:
         with self.lock:
-            return to_jsonable(self.view.tree())
+            return to_jsonable(self._view(truth).tree())
 
-    def get_equipment(self, level: Optional[str] = None, parent: Optional[str] = None) -> List[dict]:
+    def get_equipment(self, level: Optional[str] = None, parent: Optional[str] = None,
+                      truth: bool = False) -> List[dict]:
         with self.lock:
-            return to_jsonable(self.view.elements(level=level, parent=parent))
+            return to_jsonable(self._view(truth).elements(level=level, parent=parent))
 
-    def get_equipment_state(self, entity_id: str) -> dict:
+    def get_equipment_state(self, entity_id: str, truth: bool = False) -> dict:
         with self.lock:
-            return self.view.entity(entity_id)
+            d = self._view(truth).entity(entity_id)
+            return d if truth else operational.entity_dict(self._eng().state.entity(entity_id), d)
 
-    def get_entity(self, entity_id: str) -> dict:
-        return self.get_equipment_state(entity_id)
+    def get_entity(self, entity_id: str, truth: bool = False) -> dict:
+        return self.get_equipment_state(entity_id, truth)
 
     def list_entities(self, kind: Optional[str] = None) -> List[dict]:
         with self.lock:
             return [{"id": e.id, "kind": e.kind, "name": e.name} for e in self._eng().state.entities.values()
                     if kind is None or e.kind == kind]
 
-    def get_property(self, entity_id: str, prop: str) -> dict:
+    def get_property(self, entity_id: str, prop: str, truth: bool = False) -> dict:
         with self.lock:
-            return self.view.property(entity_id, prop)
+            if truth:
+                return self.view.property(entity_id, prop)
+            rec = self._eng().state.entity(entity_id)
+            if not operational.property_visible(rec, prop):
+                raise KeyError(f"Entity '{entity_id}' has no property '{prop}'")
+            d = self.view.property(entity_id, prop)
+            if prop == "status":
+                d["value"] = operational.status_value(rec, d["value"])
+            return d
 
     # ------------------------------------------------------------------ process data
     def get_measurements(self) -> List[dict]:
@@ -270,14 +305,16 @@ class SimulatorService:
             e = self._eng()
             return to_jsonable([dict(l, control_module=e.mapping.loops[l["loop_id"]]) for l in e.state.process.loops])
 
-    def get_process_image(self) -> dict:
+    def get_process_image(self, truth: bool = False) -> dict:
         with self.lock:
             e = self._eng()
             p = e.state.process
-            return to_jsonable({"xmeas": p.xmeas, "quality": p.quality, "xmv": p.xmv, "loops": p.loops,
-                                "control_mode": p.control_mode, "shutdown": p.shutdown,
-                                "shutdown_reason": p.shutdown_reason, "boundary": p.boundary,
-                                "boundary_nominal": e.process.boundary_nominal})
+            out = {"xmeas": p.xmeas, "quality": p.quality, "xmv": p.xmv, "loops": p.loops,
+                   "control_mode": p.control_mode, "shutdown": p.shutdown, "shutdown_reason": p.shutdown_reason}
+            if truth:
+                out.update({"xmeas_true": p.xmeas_true, "idv": p.idv, "boundary": p.boundary,
+                            "boundary_nominal": e.process.boundary_nominal})
+            return to_jsonable(out)
 
     def get_catalog(self) -> dict:
         with self.lock:
@@ -312,46 +349,62 @@ class SimulatorService:
 
     def get_events(self, since: Optional[int] = None, types: Optional[List[str]] = None, limit: int = 500,
                    after_id: Optional[str] = None, include_benchmark: bool = False,
-                   target: Optional[str] = None) -> List[dict]:
+                   target: Optional[str] = None, truth: bool = False) -> List[dict]:
+        """Operational stream by default. ``truth=True`` returns the canonical events (true correlation;
+        benchmark-visibility events only with ``include_benchmark``), each with its ``operational_id``
+        (null when the operational stream withholds it) so an evaluator can map operational references."""
         with self.lock:
-            return [ev.to_dict() for ev in self._eng().bus.query(
-                since=since, types=types, limit=limit, after_id=after_id,
-                include_benchmark=include_benchmark, target=target)]
+            if not truth:
+                return self._event_view().query(types=types, since=since, target=target, limit=limit,
+                                                after_id=after_id)
+            ops = self._event_view()
+            return [dict(ev.to_dict(), operational_id=ops.operational_id(ev.event_id))
+                    for ev in self._eng().bus.query(since=since, types=types, limit=limit, after_id=after_id,
+                                                    include_benchmark=include_benchmark, target=target)]
 
-    def get_utilities(self) -> dict:
+    def get_utilities(self, truth: bool = False) -> dict:
         with self.lock:
             e = self._eng()
-            return to_jsonable({uid: e.state.entity(uid).to_dict() for uid in sorted(e.utilities.services)})
+            out = {}
+            for uid in sorted(e.utilities.services):
+                rec = e.state.entity(uid)
+                out[uid] = rec.to_dict() if truth else operational.entity_dict(rec, rec.to_dict())
+            return to_jsonable(out)
 
-    def get_maintenance(self) -> dict:
+    def get_maintenance(self, truth: bool = False) -> dict:
         with self.lock:
             st = self._eng().state
             e = self._eng()
+            keys = ("status", "health", "efficiency", "vibration", "role", "run_hours", "is_running")
+            assets = []
+            for a in sorted(e.equipment.assets):
+                rec = st.entity(a)
+                props = rec.properties if truth else operational.properties(rec)
+                assets.append({"id": a, "name": rec.name, **{k: props.get(k) for k in keys if k in props}})
             return to_jsonable({
                 "work_orders": [w.to_dict() for w in sorted(st.collection("work_orders").values(),
                                                             key=lambda w: w.wo_id, reverse=True)],
                 "technicians": [t.to_dict() for t in st.collection("technicians").values()],
-                "assets": [{"id": a, "name": st.entity(a).name, **{k: st.get(a, k) for k in (
-                    "status", "health", "efficiency", "vibration", "role", "run_hours", "is_running")}}
-                           for a in sorted(e.equipment.assets)],
+                "assets": assets,
                 "spare_parts": [p.to_dict() for p in st.collection("spare_parts").values()]})
 
-    def get_inventory(self) -> dict:
+    def get_inventory(self, truth: bool = False) -> dict:
         with self.lock:
             e = self._eng()
             st = e.state
             storage = []
             for sid in sorted(e.inventory.storage):
                 rec = st.entity(sid)
-                hidden = set(rec.meta.get("unobservable", []))
-                storage.append({"id": sid, "name": rec.name, **{k: v for k, v in rec.properties.items()
-                                                                  if k not in hidden}})
+                props = rec.properties if truth else operational.properties(rec)
+                storage.append({"id": sid, "name": rec.name, **props})
             return to_jsonable({
                 "storage": storage,
                 "material_lots": [l.to_dict() for l in st.collection("material_lots").values()],
                 "purchase_orders": [p.to_dict() for p in st.collection("purchase_orders").values()],
                 "spare_parts": [p.to_dict() for p in st.collection("spare_parts").values()],
-                "materials": [st.entity(m).to_dict() for m in sorted(e.materials.materials)],
+                "materials": [st.entity(m).to_dict() if truth else
+                              operational.entity_dict(st.entity(m), st.entity(m).to_dict())
+                              for m in sorted(e.materials.materials)],
                 "warehouse": e.warehouse.summary(),
                 "shipments": [s.to_dict() for s in st.collection("shipments").values()]})
 
@@ -382,13 +435,20 @@ class SimulatorService:
                                 "boundary_definitions": {k: v.to_dict() for k, v in
                                                          e.adapter.get_boundary_parameter_definitions().items()}})
 
-    def get_history(self, series: List[str], since: Optional[int] = None, max_points: int = 1500) -> dict:
+    def get_history(self, series: List[str], since: Optional[int] = None, max_points: int = 1500,
+                    truth: bool = False) -> dict:
         with self.lock:
-            return self._eng().history.query(series, since, max_points)
+            e = self._eng()
+            if not truth:
+                hidden = [s for s in series if not operational.series_visible(e.state, s)]
+                if hidden:
+                    raise KeyError(f"Unknown series {hidden}")
+            return e.history.query(series, since, max_points)
 
-    def get_history_catalog(self) -> List[dict]:
+    def get_history_catalog(self, truth: bool = False) -> List[dict]:
         with self.lock:
-            return list(self._eng().history.meta.values())
+            e = self._eng()
+            return [m for m in e.history.meta.values() if truth or operational.series_visible(e.state, m["name"])]
 
     # ------------------------------------------------------------------ operator actions
     def operator_action(self, action: str, params: Dict[str, Any], actor: str = "operator") -> Any:

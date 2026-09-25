@@ -3,7 +3,7 @@
 The coupling graph is the **executed** part of the variable graph. It is the dependency graph of the
 67 relations in `configs/coupling.yaml`, built and topologically sorted by `CouplingEngine` at start-up.
 `CouplingEngine.graph()` exposes it together with the documented `process_influences`. The UI shows
-it as a list in the **Causal Model** tab, and `/api/coupling` returns it.
+it as a list in the **Causal Model** tab, and `/api/benchmark/coupling` returns it.
 
 ## Structure
 

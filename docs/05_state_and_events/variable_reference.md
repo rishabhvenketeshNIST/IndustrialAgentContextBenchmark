@@ -10,233 +10,233 @@ so it reflects actual behaviour, not intent.
   other variables), simulated (state evolved by a module), constant (configuration).
 * **Influences TEP**: "yes" when the property is an input, directly or transitively, of a coupling
   relation that writes a `tep.boundary.*` parameter, or of inventory supply availability which does.
-* **Agent-visible (current API)**: there is no agent interface yet; this column states what the
-  operational REST API returns. Every property is returned by `/api/entities/{id}`; metadata tags
-  (`model_internal`, `unobservable`) label but do not filter (see docs/11_limitations/documentation_vs_implementation.md).
+* **Operational API**: whether the operational routes (`/api/*` outside `/api/benchmark/*`) serve the
+  property. Properties tagged `model_internal` or `unobservable` by their owning module are served only
+  on benchmark routes (`api/operational.py`, docs/CANONICAL_SIMULATOR_CONTRACT.md §20).
 * TEP process variables (XMEAS, XMV, setpoints) are documented in docs/03_tep; process image fields in
   docs/05_state_and_events/canonical_state.md.
 
 ## Process-bound equipment properties (TEP observations and control)
 
-| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Agent-visible (current API) |
+| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Operational API |
 |---|---|---|---|---|---|---|---|---|---|
-| `mode` | pid_loop | CM-AIC-PRDE, CM-AIC-PRGB, CM-AIC-RFA, CM-AIC-RFD, CM-AIC-RFE, CM-FIC-A (+13) | - | string | ProcessInterface.sync | commanded | native controller state (copy) | no | yes (`/api/entities`) |
-| `output` | pid_loop | CM-AIC-PRDE, CM-AIC-PRGB, CM-AIC-RFA, CM-AIC-RFD, CM-AIC-RFE, CM-FIC-A (+13) | - | float | ProcessInterface.sync | commanded | native controller state (copy) | no | yes (`/api/entities`) |
-| `process_value` | pid_loop | CM-AIC-PRDE, CM-AIC-PRGB, CM-AIC-RFA, CM-AIC-RFD, CM-AIC-RFE, CM-FIC-A (+13) | - | float | ProcessInterface.sync | measured | observation of TEP (transmitted PV) | no | yes (`/api/entities`) |
-| `saturated` | pid_loop | CM-AIC-PRDE, CM-AIC-PRGB, CM-AIC-RFA, CM-AIC-RFD, CM-AIC-RFE, CM-FIC-A (+13) | - | bool | ProcessInterface.sync | derived | enterprise interpretation of controller output | no | yes (`/api/entities`) |
-| `setpoint` | pid_loop | CM-AIC-PRDE, CM-AIC-PRGB, CM-AIC-RFA, CM-AIC-RFD, CM-AIC-RFE, CM-FIC-A (+13) | - | float | ProcessInterface.sync | commanded | native controller state (copy) | no | yes (`/api/entities`) |
-| `composition_D` | online_analyzer | CM-AT-PRODUCT, CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `composition_E` | online_analyzer | CM-AT-PRODUCT, CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `composition_F` | online_analyzer | CM-AT-PRODUCT, CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `composition_G` | online_analyzer | CM-AT-PRODUCT, CM-AT-PURGE | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `composition_H` | online_analyzer | CM-AT-PRODUCT, CM-AT-PURGE | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `composition_A` | online_analyzer | CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `composition_B` | online_analyzer | CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `composition_C` | online_analyzer | CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `position` | control_valve | CM-CV-11, CM-FV-01, CM-FV-02, CM-FV-03, CM-FV-04, CM-LV-07 (+5) | % | float | ProcessInterface.sync | commanded | TEP manipulated variable (copy) | no | yes (`/api/entities`) |
-| `speed` | variable_speed_drive | CM-SC-12 | % | float | ProcessInterface.sync | commanded | TEP manipulated variable (copy) | no | yes (`/api/entities`) |
-| `cw_outlet_temperature` | heat_exchanger | EM-CONDENSER, EM-RX-COOLING | degC | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `flow` | feed_line | EM-FEED-A, EM-FEED-AC, EM-FEED-D, EM-FEED-E | kg/h, kscmh | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `flow` | purge_line | EM-PURGE | kscmh | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `feed_rate` | reactor_vessel | EM-REACTOR | kscmh | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `level` | reactor_vessel | EM-REACTOR | % | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `pressure` | reactor_vessel | EM-REACTOR | kPa gauge | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `temperature` | reactor_vessel | EM-REACTOR | degC | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `level` | separator_vessel | EM-SEPARATOR | % | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `pressure` | separator_vessel | EM-SEPARATOR | kPa gauge | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `temperature` | separator_vessel | EM-SEPARATOR | degC | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `underflow` | separator_vessel | EM-SEPARATOR | m3/h | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `level` | stripping_column | EM-STRIPPER | % | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `pressure` | stripping_column | EM-STRIPPER | kPa gauge | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `product_flow` | stripping_column | EM-STRIPPER | m3/h | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `temperature` | stripping_column | EM-STRIPPER | degC | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `steam_flow` | steam_heater | EM-STRIPPER-STEAM | kg/h | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
+| `mode` | pid_loop | CM-AIC-PRDE, CM-AIC-PRGB, CM-AIC-RFA, CM-AIC-RFD, CM-AIC-RFE, CM-FIC-A (+13) | - | string | ProcessInterface.sync | commanded | native controller state (copy) | no | yes |
+| `output` | pid_loop | CM-AIC-PRDE, CM-AIC-PRGB, CM-AIC-RFA, CM-AIC-RFD, CM-AIC-RFE, CM-FIC-A (+13) | - | float | ProcessInterface.sync | commanded | native controller state (copy) | no | yes |
+| `process_value` | pid_loop | CM-AIC-PRDE, CM-AIC-PRGB, CM-AIC-RFA, CM-AIC-RFD, CM-AIC-RFE, CM-FIC-A (+13) | - | float | ProcessInterface.sync | measured | observation of TEP (transmitted PV) | no | yes |
+| `saturated` | pid_loop | CM-AIC-PRDE, CM-AIC-PRGB, CM-AIC-RFA, CM-AIC-RFD, CM-AIC-RFE, CM-FIC-A (+13) | - | bool | ProcessInterface.sync | derived | enterprise interpretation of controller output | no | yes |
+| `setpoint` | pid_loop | CM-AIC-PRDE, CM-AIC-PRGB, CM-AIC-RFA, CM-AIC-RFD, CM-AIC-RFE, CM-FIC-A (+13) | - | float | ProcessInterface.sync | commanded | native controller state (copy) | no | yes |
+| `composition_D` | online_analyzer | CM-AT-PRODUCT, CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `composition_E` | online_analyzer | CM-AT-PRODUCT, CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `composition_F` | online_analyzer | CM-AT-PRODUCT, CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `composition_G` | online_analyzer | CM-AT-PRODUCT, CM-AT-PURGE | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `composition_H` | online_analyzer | CM-AT-PRODUCT, CM-AT-PURGE | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `composition_A` | online_analyzer | CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `composition_B` | online_analyzer | CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `composition_C` | online_analyzer | CM-AT-PURGE, CM-AT-RXFEED | mol% | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `position` | control_valve | CM-CV-11, CM-FV-01, CM-FV-02, CM-FV-03, CM-FV-04, CM-LV-07 (+5) | % | float | ProcessInterface.sync | commanded | TEP manipulated variable (copy) | no | yes |
+| `speed` | variable_speed_drive | CM-SC-12 | % | float | ProcessInterface.sync | commanded | TEP manipulated variable (copy) | no | yes |
+| `cw_outlet_temperature` | heat_exchanger | EM-CONDENSER, EM-RX-COOLING | degC | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `flow` | feed_line | EM-FEED-A, EM-FEED-AC, EM-FEED-D, EM-FEED-E | kg/h, kscmh | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `flow` | purge_line | EM-PURGE | kscmh | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `feed_rate` | reactor_vessel | EM-REACTOR | kscmh | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `level` | reactor_vessel | EM-REACTOR | % | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `pressure` | reactor_vessel | EM-REACTOR | kPa gauge | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `temperature` | reactor_vessel | EM-REACTOR | degC | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `level` | separator_vessel | EM-SEPARATOR | % | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `pressure` | separator_vessel | EM-SEPARATOR | kPa gauge | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `temperature` | separator_vessel | EM-SEPARATOR | degC | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `underflow` | separator_vessel | EM-SEPARATOR | m3/h | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `level` | stripping_column | EM-STRIPPER | % | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `pressure` | stripping_column | EM-STRIPPER | kPa gauge | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `product_flow` | stripping_column | EM-STRIPPER | m3/h | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `temperature` | stripping_column | EM-STRIPPER | degC | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `steam_flow` | steam_heater | EM-STRIPPER-STEAM | kg/h | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
 
 ## Maintainable assets (equipment condition and capability)
 
-| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Agent-visible (current API) |
+| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Operational API |
 |---|---|---|---|---|---|---|---|---|---|
-| `desired_state` | agitator | EM-AGITATOR | - | string | EquipmentModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `efficiency` | agitator | EM-AGITATOR | - | float | EquipmentModule | constant | placeholder 1.0 set at setup; no relation updates it | no | yes (`/api/entities`); tagged model_internal |
-| `health` | agitator | EM-AGITATOR | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | no | yes (`/api/entities`); tagged model_internal |
-| `is_running` | agitator | EM-AGITATOR | - | float | EquipmentModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `rated_motor_power_kw` | agitator | EM-AGITATOR | - | float | EquipmentModule | constant | configuration | yes | yes (`/api/entities`) |
-| `role` | agitator | EM-AGITATOR | - | string | EquipmentModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `run_hours` | agitator | EM-AGITATOR | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `status` | agitator | EM-AGITATOR | - | string | EquipmentModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `vibration` | agitator | EM-AGITATOR | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes (`/api/entities`) |
-| `capability` | centrifugal_compressor | EM-COMPRESSOR | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`); tagged model_internal |
-| `desired_state` | centrifugal_compressor | EM-COMPRESSOR | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `efficiency` | centrifugal_compressor | EM-COMPRESSOR | - | float | CouplingEngine; EquipmentModule | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`); tagged model_internal |
-| `health` | centrifugal_compressor | EM-COMPRESSOR | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | yes (`/api/entities`); tagged model_internal |
-| `is_running` | centrifugal_compressor | EM-COMPRESSOR | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes (`/api/entities`) |
-| `power` | centrifugal_compressor | EM-COMPRESSOR | kW | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `rated_capacity_margin` | centrifugal_compressor | EM-COMPRESSOR | - | float | EquipmentModule | constant | configuration | yes | yes (`/api/entities`) |
-| `rated_motor_power_kw` | centrifugal_compressor | EM-COMPRESSOR | - | float | EquipmentModule | constant | configuration | no | yes (`/api/entities`) |
-| `recycle_flow` | centrifugal_compressor | EM-COMPRESSOR | kscmh | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes (`/api/entities`) |
-| `role` | centrifugal_compressor | EM-COMPRESSOR | - | string | EquipmentModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `run_hours` | centrifugal_compressor | EM-COMPRESSOR | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `status` | centrifugal_compressor | EM-COMPRESSOR | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `vibration` | centrifugal_compressor | EM-COMPRESSOR | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes (`/api/entities`) |
-| `available_steam` | boiler | WU-BLR-301 | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`); tagged model_internal |
-| `desired_state` | boiler | WU-BLR-301 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `efficiency` | boiler | WU-BLR-301 | - | float | CouplingEngine; EquipmentModule | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`); tagged model_internal |
-| `health` | boiler | WU-BLR-301 | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | yes (`/api/entities`); tagged model_internal |
-| `is_running` | boiler | WU-BLR-301 | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes (`/api/entities`) |
-| `rated_aux_power_kw` | boiler | WU-BLR-301 | - | float | EquipmentModule | constant | configuration | yes | yes (`/api/entities`) |
-| `rated_steam_kg_h` | boiler | WU-BLR-301 | - | float | EquipmentModule | constant | configuration | yes | yes (`/api/entities`) |
-| `role` | boiler | WU-BLR-301 | - | string | EquipmentModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `run_hours` | boiler | WU-BLR-301 | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `status` | boiler | WU-BLR-301 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `vibration` | boiler | WU-BLR-301 | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes (`/api/entities`) |
-| `desired_state` | cooling_tower | WU-CT-101 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `efficiency` | cooling_tower | WU-CT-101 | - | float | CouplingEngine; EquipmentModule | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`); tagged model_internal |
-| `health` | cooling_tower | WU-CT-101 | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | yes (`/api/entities`); tagged model_internal |
-| `is_running` | cooling_tower | WU-CT-101 | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes (`/api/entities`) |
-| `rated_fan_power_kw` | cooling_tower | WU-CT-101 | - | float | EquipmentModule | constant | configuration | yes | yes (`/api/entities`) |
-| `rated_max_supply_temperature_rise_c` | cooling_tower | WU-CT-101 | - | float | EquipmentModule | constant | configuration | yes | yes (`/api/entities`) |
-| `role` | cooling_tower | WU-CT-101 | - | string | EquipmentModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `run_hours` | cooling_tower | WU-CT-101 | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `status` | cooling_tower | WU-CT-101 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `supply_temperature_rise` | cooling_tower | WU-CT-101 | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`); tagged model_internal |
-| `vibration` | cooling_tower | WU-CT-101 | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes (`/api/entities`) |
-| `available_flow` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`); tagged model_internal |
-| `desired_state` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `efficiency` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | float | CouplingEngine; EquipmentModule | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`); tagged model_internal |
-| `health` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | yes (`/api/entities`); tagged model_internal |
-| `is_running` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes (`/api/entities`) |
-| `rated_flow` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | float | EquipmentModule | constant | configuration | yes | yes (`/api/entities`) |
-| `rated_power_kw` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | float | EquipmentModule | constant | configuration | yes | yes (`/api/entities`) |
-| `role` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | string | EquipmentModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `run_hours` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `status` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `vibration` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes (`/api/entities`) |
-| `desired_state` | motor_control_center | WU-MCC-401 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `efficiency` | motor_control_center | WU-MCC-401 | - | float | EquipmentModule | constant | placeholder 1.0 set at setup; no relation updates it | no | yes (`/api/entities`); tagged model_internal |
-| `health` | motor_control_center | WU-MCC-401 | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | yes (`/api/entities`); tagged model_internal |
-| `is_running` | motor_control_center | WU-MCC-401 | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes (`/api/entities`) |
-| `role` | motor_control_center | WU-MCC-401 | - | string | EquipmentModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `run_hours` | motor_control_center | WU-MCC-401 | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `status` | motor_control_center | WU-MCC-401 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `supply_fraction` | motor_control_center | WU-MCC-401 | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`); tagged model_internal |
-| `vibration` | motor_control_center | WU-MCC-401 | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes (`/api/entities`) |
-| `available_kw` | transformer | WU-TX-401 | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`); tagged model_internal |
-| `desired_state` | transformer | WU-TX-401 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `efficiency` | transformer | WU-TX-401 | - | float | EquipmentModule | constant | placeholder 1.0 set at setup; no relation updates it | no | yes (`/api/entities`); tagged model_internal |
-| `health` | transformer | WU-TX-401 | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | yes (`/api/entities`); tagged model_internal |
-| `is_running` | transformer | WU-TX-401 | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes (`/api/entities`) |
-| `rated_capacity_kw` | transformer | WU-TX-401 | - | float | EquipmentModule | constant | configuration | yes | yes (`/api/entities`) |
-| `role` | transformer | WU-TX-401 | - | string | EquipmentModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `run_hours` | transformer | WU-TX-401 | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `status` | transformer | WU-TX-401 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes (`/api/entities`) |
-| `vibration` | transformer | WU-TX-401 | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes (`/api/entities`) |
+| `desired_state` | agitator | EM-AGITATOR | - | string | EquipmentModule | derived | enterprise interpretation | no | yes |
+| `efficiency` | agitator | EM-AGITATOR | - | float | EquipmentModule | constant | placeholder 1.0 set at setup; no relation updates it | no | no (benchmark routes only) |
+| `health` | agitator | EM-AGITATOR | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | no | no (benchmark routes only) |
+| `is_running` | agitator | EM-AGITATOR | - | float | EquipmentModule | simulated | enterprise simulation state | no | yes |
+| `rated_motor_power_kw` | agitator | EM-AGITATOR | - | float | EquipmentModule | constant | configuration | yes | yes |
+| `role` | agitator | EM-AGITATOR | - | string | EquipmentModule | derived | enterprise interpretation | no | yes |
+| `run_hours` | agitator | EM-AGITATOR | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes |
+| `status` | agitator | EM-AGITATOR | - | string | EquipmentModule | derived | enterprise interpretation | no | yes; DEGRADED reported as RUNNING |
+| `vibration` | agitator | EM-AGITATOR | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes |
+| `capability` | centrifugal_compressor | EM-COMPRESSOR | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `desired_state` | centrifugal_compressor | EM-COMPRESSOR | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes |
+| `efficiency` | centrifugal_compressor | EM-COMPRESSOR | - | float | CouplingEngine; EquipmentModule | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `health` | centrifugal_compressor | EM-COMPRESSOR | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | no (benchmark routes only) |
+| `is_running` | centrifugal_compressor | EM-COMPRESSOR | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes |
+| `power` | centrifugal_compressor | EM-COMPRESSOR | kW | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `rated_capacity_margin` | centrifugal_compressor | EM-COMPRESSOR | - | float | EquipmentModule | constant | configuration | yes | yes |
+| `rated_motor_power_kw` | centrifugal_compressor | EM-COMPRESSOR | - | float | EquipmentModule | constant | configuration | no | yes |
+| `recycle_flow` | centrifugal_compressor | EM-COMPRESSOR | kscmh | float | ProcessInterface.sync | measured | observation of TEP (transmitted value) | no | yes |
+| `role` | centrifugal_compressor | EM-COMPRESSOR | - | string | EquipmentModule | derived | enterprise interpretation | no | yes |
+| `run_hours` | centrifugal_compressor | EM-COMPRESSOR | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes |
+| `status` | centrifugal_compressor | EM-COMPRESSOR | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes; DEGRADED reported as RUNNING |
+| `vibration` | centrifugal_compressor | EM-COMPRESSOR | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes |
+| `available_steam` | boiler | WU-BLR-301 | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `desired_state` | boiler | WU-BLR-301 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes |
+| `efficiency` | boiler | WU-BLR-301 | - | float | CouplingEngine; EquipmentModule | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `health` | boiler | WU-BLR-301 | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | no (benchmark routes only) |
+| `is_running` | boiler | WU-BLR-301 | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes |
+| `rated_aux_power_kw` | boiler | WU-BLR-301 | - | float | EquipmentModule | constant | configuration | yes | yes |
+| `rated_steam_kg_h` | boiler | WU-BLR-301 | - | float | EquipmentModule | constant | configuration | yes | yes |
+| `role` | boiler | WU-BLR-301 | - | string | EquipmentModule | derived | enterprise interpretation | no | yes |
+| `run_hours` | boiler | WU-BLR-301 | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes |
+| `status` | boiler | WU-BLR-301 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes; DEGRADED reported as RUNNING |
+| `vibration` | boiler | WU-BLR-301 | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes |
+| `desired_state` | cooling_tower | WU-CT-101 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes |
+| `efficiency` | cooling_tower | WU-CT-101 | - | float | CouplingEngine; EquipmentModule | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `health` | cooling_tower | WU-CT-101 | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | no (benchmark routes only) |
+| `is_running` | cooling_tower | WU-CT-101 | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes |
+| `rated_fan_power_kw` | cooling_tower | WU-CT-101 | - | float | EquipmentModule | constant | configuration | yes | yes |
+| `rated_max_supply_temperature_rise_c` | cooling_tower | WU-CT-101 | - | float | EquipmentModule | constant | configuration | yes | yes |
+| `role` | cooling_tower | WU-CT-101 | - | string | EquipmentModule | derived | enterprise interpretation | no | yes |
+| `run_hours` | cooling_tower | WU-CT-101 | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes |
+| `status` | cooling_tower | WU-CT-101 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes; DEGRADED reported as RUNNING |
+| `supply_temperature_rise` | cooling_tower | WU-CT-101 | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `vibration` | cooling_tower | WU-CT-101 | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes |
+| `available_flow` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `desired_state` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes |
+| `efficiency` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | float | CouplingEngine; EquipmentModule | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `health` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | no (benchmark routes only) |
+| `is_running` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes |
+| `rated_flow` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | float | EquipmentModule | constant | configuration | yes | yes |
+| `rated_power_kw` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | float | EquipmentModule | constant | configuration | yes | yes |
+| `role` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | string | EquipmentModule | derived | enterprise interpretation | no | yes |
+| `run_hours` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes |
+| `status` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes; DEGRADED reported as RUNNING |
+| `vibration` | centrifugal_pump | WU-CWP-101A, WU-CWP-101B, WU-CWP-201A, WU-CWP-201B | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes |
+| `desired_state` | motor_control_center | WU-MCC-401 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes |
+| `efficiency` | motor_control_center | WU-MCC-401 | - | float | EquipmentModule | constant | placeholder 1.0 set at setup; no relation updates it | no | no (benchmark routes only) |
+| `health` | motor_control_center | WU-MCC-401 | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | no (benchmark routes only) |
+| `is_running` | motor_control_center | WU-MCC-401 | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes |
+| `role` | motor_control_center | WU-MCC-401 | - | string | EquipmentModule | derived | enterprise interpretation | no | yes |
+| `run_hours` | motor_control_center | WU-MCC-401 | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes |
+| `status` | motor_control_center | WU-MCC-401 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes; DEGRADED reported as RUNNING |
+| `supply_fraction` | motor_control_center | WU-MCC-401 | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `vibration` | motor_control_center | WU-MCC-401 | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes |
+| `available_kw` | transformer | WU-TX-401 | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `desired_state` | transformer | WU-TX-401 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes |
+| `efficiency` | transformer | WU-TX-401 | - | float | EquipmentModule | constant | placeholder 1.0 set at setup; no relation updates it | no | no (benchmark routes only) |
+| `health` | transformer | WU-TX-401 | fraction | float | EquipmentModule | simulated | simulation truth (model-internal) | yes | no (benchmark routes only) |
+| `is_running` | transformer | WU-TX-401 | - | float | EquipmentModule | simulated | enterprise simulation state | yes | yes |
+| `rated_capacity_kw` | transformer | WU-TX-401 | - | float | EquipmentModule | constant | configuration | yes | yes |
+| `role` | transformer | WU-TX-401 | - | string | EquipmentModule | derived | enterprise interpretation | no | yes |
+| `run_hours` | transformer | WU-TX-401 | h | float | EquipmentModule | simulated | enterprise simulation state | no | yes |
+| `status` | transformer | WU-TX-401 | - | string | EquipmentModule | derived | enterprise interpretation | yes | yes; DEGRADED reported as RUNNING |
+| `vibration` | transformer | WU-TX-401 | mm/s | float | EquipmentModule | measured | observable condition-monitoring indicator (derived from health) | no | yes |
 
 ## Materials
 
-| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Agent-visible (current API) |
+| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Operational API |
 |---|---|---|---|---|---|---|---|---|---|
-| `category` | material | MAT-A, MAT-AC, MAT-D, MAT-E, MAT-GH | - | string | MaterialsModule | constant | configuration | no | yes (`/api/entities`) |
-| `tep_measurement` | material | MAT-A, MAT-AC, MAT-D, MAT-E | - | string | MaterialsModule | constant | configuration | no | yes (`/api/entities`) |
-| `unit` | material | MAT-A, MAT-AC, MAT-D, MAT-E, MAT-GH | - | string | MaterialsModule | constant | configuration | no | yes (`/api/entities`) |
+| `category` | material | MAT-A, MAT-AC, MAT-D, MAT-E, MAT-GH | - | string | MaterialsModule | constant | configuration | no | yes |
+| `tep_measurement` | material | MAT-A, MAT-AC, MAT-D, MAT-E | - | string | MaterialsModule | constant | configuration | no | yes |
+| `unit` | material | MAT-A, MAT-AC, MAT-D, MAT-E, MAT-GH | - | string | MaterialsModule | constant | configuration | no | yes |
 
 ## Storage units
 
-| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Agent-visible (current API) |
+| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Operational API |
 |---|---|---|---|---|---|---|---|---|---|
-| `available_kg` | gas_storage | SU-SPH-103, SU-SPH-104 | kg | float | InventoryModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `capacity_kg` | gas_storage | SU-SPH-103, SU-SPH-104 | kg | float | InventoryModule | constant | configuration | no | yes (`/api/entities`) |
-| `consumption_kg_h` | gas_storage | SU-SPH-103, SU-SPH-104 | kg/h | float | InventoryModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `current_lot` | gas_storage | SU-SPH-103, SU-SPH-104 | - | string | InventoryModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `feed_impurity` | gas_storage | SU-SPH-103 | - | float | InventoryModule | simulated | simulation truth (physical, not instrumented) | no | yes (`/api/entities`); hidden in UI/`/api/inventory` |
-| `feed_impurity_deviation` | gas_storage | SU-SPH-103 | - | float | InventoryModule | derived | simulation truth (lot composition deviation incl. fault effect); NOT tagged unobservable | yes | yes (`/api/entities`) |
-| `level_pct` | gas_storage | SU-SPH-103, SU-SPH-104 | % | float | InventoryModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `material` | gas_storage | SU-SPH-103, SU-SPH-104 | - | string | InventoryModule | constant | configuration | no | yes (`/api/entities`) |
-| `quantity_kg` | gas_storage | SU-SPH-103, SU-SPH-104 | kg | float | InventoryModule | simulated | enterprise simulation state | yes | yes (`/api/entities`) |
-| `reserved_kg` | gas_storage | SU-SPH-103, SU-SPH-104 | kg | int | InventoryModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `status` | gas_storage | SU-SPH-103, SU-SPH-104 | - | string | InventoryModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `supply_availability` | gas_storage | SU-SPH-103, SU-SPH-104 | - | float | InventoryModule | simulated | simulation truth (physical, not instrumented) | yes | yes (`/api/entities`); hidden in UI/`/api/inventory` |
-| `usable_kg` | gas_storage | SU-SPH-103, SU-SPH-104 | - | float | InventoryModule | simulated | enterprise simulation state | yes | yes (`/api/entities`) |
-| `feed_a_fraction` | gas_storage | SU-SPH-104 | - | float | InventoryModule | simulated | simulation truth (physical, not instrumented) | no | yes (`/api/entities`); hidden in UI/`/api/inventory` |
-| `feed_a_fraction_deviation` | gas_storage | SU-SPH-104 | - | float | InventoryModule | derived | simulation truth (lot composition deviation incl. fault effect); NOT tagged unobservable | yes | yes (`/api/entities`) |
-| `feed_b_fraction` | gas_storage | SU-SPH-104 | - | float | InventoryModule | simulated | simulation truth (physical, not instrumented) | no | yes (`/api/entities`); hidden in UI/`/api/inventory` |
-| `feed_b_fraction_deviation` | gas_storage | SU-SPH-104 | - | float | InventoryModule | derived | simulation truth (lot composition deviation incl. fault effect); NOT tagged unobservable | yes | yes (`/api/entities`) |
-| `available_kg` | liquid_tank | SU-TK-101, SU-TK-102 | kg | float | InventoryModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `capacity_kg` | liquid_tank | SU-TK-101, SU-TK-102 | kg | float | InventoryModule | constant | configuration | no | yes (`/api/entities`) |
-| `consumption_kg_h` | liquid_tank | SU-TK-101, SU-TK-102 | kg/h | float | InventoryModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `current_lot` | liquid_tank | SU-TK-101, SU-TK-102 | - | string | InventoryModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `feed_impurity` | liquid_tank | SU-TK-101, SU-TK-102 | - | float | InventoryModule | simulated | simulation truth (physical, not instrumented) | no | yes (`/api/entities`); hidden in UI/`/api/inventory` |
-| `feed_impurity_deviation` | liquid_tank | SU-TK-101, SU-TK-102 | - | float | InventoryModule | derived | simulation truth (lot composition deviation incl. fault effect); NOT tagged unobservable | yes | yes (`/api/entities`) |
-| `level_pct` | liquid_tank | SU-TK-101, SU-TK-102 | % | float | InventoryModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `material` | liquid_tank | SU-TK-101, SU-TK-102 | - | string | InventoryModule | constant | configuration | no | yes (`/api/entities`) |
-| `quantity_kg` | liquid_tank | SU-TK-101, SU-TK-102 | kg | float | InventoryModule | simulated | enterprise simulation state | yes | yes (`/api/entities`) |
-| `reserved_kg` | liquid_tank | SU-TK-101, SU-TK-102 | kg | int | InventoryModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `status` | liquid_tank | SU-TK-101, SU-TK-102 | - | string | InventoryModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `supply_availability` | liquid_tank | SU-TK-101, SU-TK-102 | - | float | InventoryModule | simulated | simulation truth (physical, not instrumented) | yes | yes (`/api/entities`); hidden in UI/`/api/inventory` |
-| `usable_kg` | liquid_tank | SU-TK-101, SU-TK-102 | - | float | InventoryModule | simulated | enterprise simulation state | yes | yes (`/api/entities`) |
-| `level_pct` | product_tank | SU-TK-501, SU-TK-502, SU-TK-503 | - | float | WarehouseModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `lots` | product_tank | SU-TK-501, SU-TK-502, SU-TK-503 | - | list | WarehouseModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `material` | product_tank | SU-TK-501, SU-TK-502, SU-TK-503 | - | string | WarehouseModule | constant | configuration | no | yes (`/api/entities`) |
-| `quantity_kg` | product_tank | SU-TK-501, SU-TK-502, SU-TK-503 | kg | float/int | WarehouseModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
+| `available_kg` | gas_storage | SU-SPH-103, SU-SPH-104 | kg | float | InventoryModule | simulated | enterprise simulation state | no | yes |
+| `capacity_kg` | gas_storage | SU-SPH-103, SU-SPH-104 | kg | float | InventoryModule | constant | configuration | no | yes |
+| `consumption_kg_h` | gas_storage | SU-SPH-103, SU-SPH-104 | kg/h | float | InventoryModule | simulated | enterprise simulation state | no | yes |
+| `current_lot` | gas_storage | SU-SPH-103, SU-SPH-104 | - | string | InventoryModule | simulated | enterprise simulation state | no | yes |
+| `feed_impurity` | gas_storage | SU-SPH-103 | - | float | InventoryModule | simulated | simulation truth (physical, not instrumented) | no | no (benchmark routes only) |
+| `feed_impurity_deviation` | gas_storage | SU-SPH-103 | - | float | InventoryModule | derived | simulation truth (lot composition deviation incl. fault effect) | yes | no (benchmark routes only) |
+| `level_pct` | gas_storage | SU-SPH-103, SU-SPH-104 | % | float | InventoryModule | derived | enterprise interpretation | no | yes |
+| `material` | gas_storage | SU-SPH-103, SU-SPH-104 | - | string | InventoryModule | constant | configuration | no | yes |
+| `quantity_kg` | gas_storage | SU-SPH-103, SU-SPH-104 | kg | float | InventoryModule | simulated | enterprise simulation state | yes | yes |
+| `reserved_kg` | gas_storage | SU-SPH-103, SU-SPH-104 | kg | int | InventoryModule | simulated | enterprise simulation state | no | yes |
+| `status` | gas_storage | SU-SPH-103, SU-SPH-104 | - | string | InventoryModule | derived | enterprise interpretation | no | yes |
+| `supply_availability` | gas_storage | SU-SPH-103, SU-SPH-104 | - | float | InventoryModule | simulated | enterprise simulation state | yes | yes |
+| `usable_kg` | gas_storage | SU-SPH-103, SU-SPH-104 | - | float | InventoryModule | simulated | enterprise simulation state | yes | yes |
+| `feed_a_fraction` | gas_storage | SU-SPH-104 | - | float | InventoryModule | simulated | simulation truth (physical, not instrumented) | no | no (benchmark routes only) |
+| `feed_a_fraction_deviation` | gas_storage | SU-SPH-104 | - | float | InventoryModule | derived | simulation truth (lot composition deviation incl. fault effect) | yes | no (benchmark routes only) |
+| `feed_b_fraction` | gas_storage | SU-SPH-104 | - | float | InventoryModule | simulated | simulation truth (physical, not instrumented) | no | no (benchmark routes only) |
+| `feed_b_fraction_deviation` | gas_storage | SU-SPH-104 | - | float | InventoryModule | derived | simulation truth (lot composition deviation incl. fault effect) | yes | no (benchmark routes only) |
+| `available_kg` | liquid_tank | SU-TK-101, SU-TK-102 | kg | float | InventoryModule | simulated | enterprise simulation state | no | yes |
+| `capacity_kg` | liquid_tank | SU-TK-101, SU-TK-102 | kg | float | InventoryModule | constant | configuration | no | yes |
+| `consumption_kg_h` | liquid_tank | SU-TK-101, SU-TK-102 | kg/h | float | InventoryModule | simulated | enterprise simulation state | no | yes |
+| `current_lot` | liquid_tank | SU-TK-101, SU-TK-102 | - | string | InventoryModule | simulated | enterprise simulation state | no | yes |
+| `feed_impurity` | liquid_tank | SU-TK-101, SU-TK-102 | - | float | InventoryModule | simulated | simulation truth (physical, not instrumented) | no | no (benchmark routes only) |
+| `feed_impurity_deviation` | liquid_tank | SU-TK-101, SU-TK-102 | - | float | InventoryModule | derived | simulation truth (lot composition deviation incl. fault effect) | yes | no (benchmark routes only) |
+| `level_pct` | liquid_tank | SU-TK-101, SU-TK-102 | % | float | InventoryModule | derived | enterprise interpretation | no | yes |
+| `material` | liquid_tank | SU-TK-101, SU-TK-102 | - | string | InventoryModule | constant | configuration | no | yes |
+| `quantity_kg` | liquid_tank | SU-TK-101, SU-TK-102 | kg | float | InventoryModule | simulated | enterprise simulation state | yes | yes |
+| `reserved_kg` | liquid_tank | SU-TK-101, SU-TK-102 | kg | int | InventoryModule | simulated | enterprise simulation state | no | yes |
+| `status` | liquid_tank | SU-TK-101, SU-TK-102 | - | string | InventoryModule | derived | enterprise interpretation | no | yes |
+| `supply_availability` | liquid_tank | SU-TK-101, SU-TK-102 | - | float | InventoryModule | simulated | enterprise simulation state | yes | yes |
+| `usable_kg` | liquid_tank | SU-TK-101, SU-TK-102 | - | float | InventoryModule | simulated | enterprise simulation state | yes | yes |
+| `level_pct` | product_tank | SU-TK-501, SU-TK-502, SU-TK-503 | - | float | WarehouseModule | derived | enterprise interpretation | no | yes |
+| `lots` | product_tank | SU-TK-501, SU-TK-502, SU-TK-503 | - | list | WarehouseModule | simulated | enterprise simulation state | no | yes |
+| `material` | product_tank | SU-TK-501, SU-TK-502, SU-TK-503 | - | string | WarehouseModule | constant | configuration | no | yes |
+| `quantity_kg` | product_tank | SU-TK-501, SU-TK-502, SU-TK-503 | kg | float/int | WarehouseModule | simulated | enterprise simulation state | no | yes |
 
 ## Utility services
 
-| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Agent-visible (current API) |
+| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Operational API |
 |---|---|---|---|---|---|---|---|---|---|
-| `availability` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | fraction | float | UtilitiesModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `available_capacity` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | TEP CW flow units | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`) |
-| `capacity` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | TEP CW flow units | float | UtilitiesModule | constant | configuration | yes | yes (`/api/entities`) |
-| `capacity_fraction` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`) |
-| `demand` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | TEP CW flow units | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `flow` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | TEP CW flow units | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `health` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `nominal_pressure` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | - | float | UtilitiesModule | constant | configuration | no | yes (`/api/entities`) |
-| `nominal_supply_temperature` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | - | float | UtilitiesModule | constant | configuration | no | yes (`/api/entities`) |
-| `pressure` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | barg | float | CouplingEngine; UtilitiesModule | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `return_temperature` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | degC | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `status` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | - | string | UtilitiesModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `temperature` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | degC | float | CouplingEngine; UtilitiesModule | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`) |
-| `utilization` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `availability` | electrical_power | UT-POWER | fraction | float | UtilitiesModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `available_capacity` | electrical_power | UT-POWER | kW | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`) |
-| `capacity` | electrical_power | UT-POWER | kW | float | UtilitiesModule | constant | configuration | no | yes (`/api/entities`) |
-| `demand` | electrical_power | UT-POWER | kW | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `flow` | electrical_power | UT-POWER | kW | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `health` | electrical_power | UT-POWER | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `nominal_sheddable_fraction` | electrical_power | UT-POWER | - | float | UtilitiesModule | constant | configuration | yes | yes (`/api/entities`) |
-| `nominal_site_other_demand_kw` | electrical_power | UT-POWER | - | float | UtilitiesModule | constant | configuration | yes | yes (`/api/entities`) |
-| `nominal_voltage` | electrical_power | UT-POWER | - | float | UtilitiesModule | constant | configuration | no | yes (`/api/entities`) |
-| `pressure` | electrical_power | UT-POWER | - | null | UtilitiesModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `process_demand` | electrical_power | UT-POWER | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`) |
-| `process_supply_fraction` | electrical_power | UT-POWER | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`) |
-| `shed_load` | electrical_power | UT-POWER | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `status` | electrical_power | UT-POWER | - | string | UtilitiesModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `temperature` | electrical_power | UT-POWER | - | null | UtilitiesModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `utilization` | electrical_power | UT-POWER | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `voltage` | electrical_power | UT-POWER | kV | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `availability` | steam | UT-STEAM | fraction | float | UtilitiesModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `available_capacity` | steam | UT-STEAM | kg/h | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`) |
-| `available_for_process` | steam | UT-STEAM | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`) |
-| `capacity` | steam | UT-STEAM | kg/h | float | UtilitiesModule | constant | configuration | no | yes (`/api/entities`) |
-| `capacity_fraction` | steam | UT-STEAM | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes (`/api/entities`) |
-| `demand` | steam | UT-STEAM | kg/h | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `flow` | steam | UT-STEAM | kg/h | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `health` | steam | UT-STEAM | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `nominal_other_demand_kg_h` | steam | UT-STEAM | - | float | UtilitiesModule | constant | configuration | yes | yes (`/api/entities`) |
-| `nominal_pressure` | steam | UT-STEAM | - | float | UtilitiesModule | constant | configuration | no | yes (`/api/entities`) |
-| `nominal_stripper_design_kg_h` | steam | UT-STEAM | - | float | UtilitiesModule | constant | configuration | yes | yes (`/api/entities`) |
-| `pressure` | steam | UT-STEAM | barg | float | CouplingEngine; UtilitiesModule | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `status` | steam | UT-STEAM | - | string | UtilitiesModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `temperature` | steam | UT-STEAM | degC | float | CouplingEngine; UtilitiesModule | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
-| `utilization` | steam | UT-STEAM | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes (`/api/entities`) |
+| `availability` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | fraction | float | UtilitiesModule | simulated | simulation truth (model-internal) | no | no (benchmark routes only) |
+| `available_capacity` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | TEP CW flow units | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `capacity` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | TEP CW flow units | float | UtilitiesModule | constant | configuration | yes | yes |
+| `capacity_fraction` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `demand` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | TEP CW flow units | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes |
+| `flow` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | TEP CW flow units | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes |
+| `health` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | no (benchmark routes only) |
+| `nominal_pressure` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | - | float | UtilitiesModule | constant | configuration | no | yes |
+| `nominal_supply_temperature` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | - | float | UtilitiesModule | constant | configuration | no | yes |
+| `pressure` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | barg | float | CouplingEngine; UtilitiesModule | derived | enterprise simulation (causal relation) | no | yes |
+| `return_temperature` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | degC | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes |
+| `status` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | - | string | UtilitiesModule | simulated | simulation truth (model-internal) | no | no (benchmark routes only) |
+| `temperature` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | degC | float | CouplingEngine; UtilitiesModule | derived | enterprise simulation (causal relation) | yes | yes |
+| `utilization` | cooling_water | UT-CW-CONDENSER, UT-CW-REACTOR | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes |
+| `availability` | electrical_power | UT-POWER | fraction | float | UtilitiesModule | simulated | simulation truth (model-internal) | no | no (benchmark routes only) |
+| `available_capacity` | electrical_power | UT-POWER | kW | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `capacity` | electrical_power | UT-POWER | kW | float | UtilitiesModule | constant | configuration | no | yes |
+| `demand` | electrical_power | UT-POWER | kW | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes |
+| `flow` | electrical_power | UT-POWER | kW | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes |
+| `health` | electrical_power | UT-POWER | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | no (benchmark routes only) |
+| `nominal_sheddable_fraction` | electrical_power | UT-POWER | - | float | UtilitiesModule | constant | configuration | yes | yes |
+| `nominal_site_other_demand_kw` | electrical_power | UT-POWER | - | float | UtilitiesModule | constant | configuration | yes | yes |
+| `nominal_voltage` | electrical_power | UT-POWER | - | float | UtilitiesModule | constant | configuration | no | yes |
+| `pressure` | electrical_power | UT-POWER | - | null | UtilitiesModule | simulated | enterprise simulation state | no | yes |
+| `process_demand` | electrical_power | UT-POWER | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | yes |
+| `process_supply_fraction` | electrical_power | UT-POWER | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `shed_load` | electrical_power | UT-POWER | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes |
+| `status` | electrical_power | UT-POWER | - | string | UtilitiesModule | simulated | simulation truth (model-internal) | no | no (benchmark routes only) |
+| `temperature` | electrical_power | UT-POWER | - | null | UtilitiesModule | simulated | enterprise simulation state | no | yes |
+| `utilization` | electrical_power | UT-POWER | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes |
+| `voltage` | electrical_power | UT-POWER | kV | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes |
+| `availability` | steam | UT-STEAM | fraction | float | UtilitiesModule | simulated | simulation truth (model-internal) | no | no (benchmark routes only) |
+| `available_capacity` | steam | UT-STEAM | kg/h | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `available_for_process` | steam | UT-STEAM | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `capacity` | steam | UT-STEAM | kg/h | float | UtilitiesModule | constant | configuration | no | yes |
+| `capacity_fraction` | steam | UT-STEAM | - | float | CouplingEngine | derived | enterprise simulation (causal relation) | yes | no (benchmark routes only) |
+| `demand` | steam | UT-STEAM | kg/h | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes |
+| `flow` | steam | UT-STEAM | kg/h | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | yes |
+| `health` | steam | UT-STEAM | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | no (benchmark routes only) |
+| `nominal_other_demand_kg_h` | steam | UT-STEAM | - | float | UtilitiesModule | constant | configuration | yes | yes |
+| `nominal_pressure` | steam | UT-STEAM | - | float | UtilitiesModule | constant | configuration | no | yes |
+| `nominal_stripper_design_kg_h` | steam | UT-STEAM | - | float | UtilitiesModule | constant | configuration | yes | yes |
+| `pressure` | steam | UT-STEAM | barg | float | CouplingEngine; UtilitiesModule | derived | enterprise simulation (causal relation) | no | yes |
+| `status` | steam | UT-STEAM | - | string | UtilitiesModule | simulated | simulation truth (model-internal) | no | no (benchmark routes only) |
+| `temperature` | steam | UT-STEAM | degC | float | CouplingEngine; UtilitiesModule | derived | enterprise simulation (causal relation) | no | yes |
+| `utilization` | steam | UT-STEAM | fraction | float | CouplingEngine | derived | enterprise simulation (causal relation) | no | no (benchmark routes only) |
 
 ## Other equipment / enterprise properties
 
-| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Agent-visible (current API) |
+| Property | Class | Entities | Unit | Type | Written by (observed) | Kind | Truth / interpretation | Influences TEP | Operational API |
 |---|---|---|---|---|---|---|---|---|---|
-| `consecutive_failures` | laboratory | WU-QC-LAB | - | float | QualityModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `e_impurity` | laboratory | WU-QC-LAB | - | float | QualityModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `f_byproduct` | laboratory | WU-QC-LAB | - | float | QualityModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `g_mass_pct` | laboratory | WU-QC-LAB | - | float | QualityModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `gh_purity` | laboratory | WU-QC-LAB | - | float | QualityModule | simulated | enterprise simulation state | no | yes (`/api/entities`) |
-| `last_result` | laboratory | WU-QC-LAB | - | string | QualityModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
-| `last_result_fail` | laboratory | WU-QC-LAB | - | float | QualityModule | derived | enterprise interpretation | no | yes (`/api/entities`) |
+| `consecutive_failures` | laboratory | WU-QC-LAB | - | float | QualityModule | derived | enterprise interpretation | no | yes |
+| `e_impurity` | laboratory | WU-QC-LAB | - | float | QualityModule | simulated | enterprise simulation state | no | yes |
+| `f_byproduct` | laboratory | WU-QC-LAB | - | float | QualityModule | simulated | enterprise simulation state | no | yes |
+| `g_mass_pct` | laboratory | WU-QC-LAB | - | float | QualityModule | derived | enterprise interpretation | no | yes |
+| `gh_purity` | laboratory | WU-QC-LAB | - | float | QualityModule | simulated | enterprise simulation state | no | yes |
+| `last_result` | laboratory | WU-QC-LAB | - | string | QualityModule | derived | enterprise interpretation | no | yes |
+| `last_result_fail` | laboratory | WU-QC-LAB | - | float | QualityModule | derived | enterprise interpretation | no | yes |

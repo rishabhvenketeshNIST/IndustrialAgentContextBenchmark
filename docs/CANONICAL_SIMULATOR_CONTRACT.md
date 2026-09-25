@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Contract version** | 0.1.0 (draft) |
+| **Contract version** | 0.2.0 (draft) |
 | **Describes simulator version** | 1.0.0 (`simulator/__init__.py` `__version__`) |
 | **Machine-readable part** | `contract/canonical_contract.yaml` (checked by `tests/test_contract.py`) |
 | **Invariants** | [CANONICAL_SIMULATOR_INVARIANTS.md](CANONICAL_SIMULATOR_INVARIANTS.md) |
@@ -106,21 +106,21 @@ show it.
 
 | Class | Means | Does NOT mean | Origin / updater | Can influence TEP? | Operationally observable? |
 |---|---|---|---|---|---|
-| **measurement** | a TEP XMEAS value: *true* (`process.xmeas_true`, TEFUNC incl. TEP noise) or *transmitted* (`process.xmeas`, after instrumentation) | a guaranteed-correct value (the transmitted form can be biased); anything the enterprise layer computed | TEP; `ProcessInterface.sync` | only through native control (the transmitted form feeds CONTRLn) | transmitted: yes; true: should not be (leak G4) |
+| **measurement** | a TEP XMEAS value: *true* (`process.xmeas_true`, TEFUNC incl. TEP noise) or *transmitted* (`process.xmeas`, after instrumentation) | a guaranteed-correct value (the transmitted form can be biased); anything the enterprise layer computed | TEP; `ProcessInterface.sync` | only through native control (the transmitted form feeds CONTRLn) | transmitted: yes; true: no (benchmark routes only) |
 | **setpoint** | the target of a native loop, `SETPT(k)` | a measurement; a limit | TEINIT constants; cascade master; operator | yes (native control) | yes |
 | **controller output** | what a loop writes: an XMV, or another loop's setpoint | a flow or position; a measurement | native `CONTRLn` | yes | yes (`process.loops[*].output`) |
 | **manipulated variable** | TEP XMV, a valve/actuator *command* in % | the valve position (VPOS lags with VTAU); a delivered flow | native control; operator in MAN | yes | yes |
 | **condition** (`health`) | physical condition of an asset, 0..1 | a measurement; availability; capability | `EquipmentModule` (wear, fault damage, repair) | yes, via capability relations | **no**: model-internal (tagged `model_internal`) |
 | **condition indicator** (`vibration`) | observable symptom derived from condition | a direct health reading | `EquipmentModule` | no | yes |
 | **capability** (`efficiency`, `available_flow`, `available_capacity`, `capacity_fraction`, `capability`, …) | what an asset or service *can* deliver given its condition | what it is delivering; a measurement | `CouplingEngine` relations | yes: this is the path into TEP | **no**: model-internal |
-| **availability** | a 0..1 fraction of design supply that can be delivered (utility `availability`; storage `supply_availability`) | time-based availability (uptime %); health | `UtilitiesModule`; `InventoryModule` | storage: yes; utility `availability` itself: no (its source `capacity_fraction` does) | no: model-internal (ambiguity A9) |
-| **utility observation** (`flow`, `demand`, `utilization`, `pressure`, `voltage`, `temperature`) | a meter-like value computed by an algebraic approximation | a physically simulated quantity | `CouplingEngine` (`utility_observation` relations) | CW supply `temperature` and power `process_demand`: yes (A4); others: no | yes |
-| **discrete state** (`status`, `is_running`, `desired_state`, `role`, record status) | the current value of a finite state | the moment it changed (that is an event) | owning module | asset `is_running`/`status`: yes (via capability) | yes (utility `status`: see A3) |
+| **availability** | a 0..1 fraction of design supply that can be delivered (utility `availability`; storage `supply_availability`) | time-based availability (uptime %); health | `UtilitiesModule`; `InventoryModule` | storage: yes; utility `availability` itself: no (its source `capacity_fraction` does) | utility: no (model-internal); storage `supply_availability`: yes (a function of released stock and configuration) |
+| **utility observation** (`flow`, `demand`, `utilization`, `pressure`, `voltage`, `temperature`) | a meter-like value computed by an algebraic approximation | a physically simulated quantity | `CouplingEngine` (`utility_observation` relations) | CW supply `temperature` and power `process_demand`: yes (A4, a legitimate physical coupling); others: no | yes, except steam `utilization` (its denominator is hidden boiler capacity) |
+| **discrete state** (`status`, `is_running`, `desired_state`, `role`, record status) | the current value of a finite state | the moment it changed (that is an event) | owning module | asset `is_running`/`status`: yes (via capability) | yes, except: asset DEGRADED is reported as RUNNING; utility `status` is model-internal (§12) |
 | **derived value** | computed each step from other values, no independent memory | a cause | relation or module | depends on inputs | per the table |
-| **event** | an immutable record that something happened at a simulation time | the current state | publishing module | no (events trigger handlers, which change state) | operational events: yes; FAULT_*: no |
-| **boundary parameter** | enterprise-computed TEP input (§17) | a measurement; a TEP state | `CouplingEngine` → `ProcessInterface.set_boundary` | yes, by definition | should not be (leak G3) |
+| **event** | an immutable record that something happened at a simulation time | the current state | publishing module | no (events trigger handlers, which change state) | through the operational event stream (§16) |
+| **boundary parameter** | enterprise-computed TEP input (§17) | a measurement; a TEP state | `CouplingEngine` → `ProcessInterface.set_boundary` | yes, by definition | no (benchmark routes only) |
 | **configuration** | static design value (`rated_*`, `nominal_*`, `capacity`) | live state | configs | some are relation inputs | yes |
-| **ground truth** | the injected cause and its attribution: faults, cause channels, causal registry, correlation ids | an observation | `FaultEngine`, `CouplingEngine` | the fault's cause channels feed modules and relations | **no** by intent; partly exposed today (§20) |
+| **ground truth** | the injected cause and its attribution: faults, cause channels, causal registry, correlation ids | an observation | `FaultEngine`, `CouplingEngine` | the fault's cause channels feed modules and relations | **no** (enforced by the operational boundary, §20) |
 
 Per-property classification of every property the simulator produces is in
 `contract/canonical_contract.yaml`, with owner, observability and TEP influence.
@@ -172,7 +172,7 @@ For an asset (`meta.asset`, 10 assets in `configs/equipment.yaml`):
 | Term | Implementation meaning | Example (demo) |
 |---|---|---|
 | `health` (condition) | `intrinsic_health − fault damage`, clipped to 0..1. Intrinsic health wears only while running and is restored by corrective maintenance. | P-101A 0.97 → 0.348 |
-| `status` (state) | RUNNING, DEGRADED (health < 0.75 while running), STANDBY, STOPPED, FAILED (health ≤ 0.05 or `failed` channel), UNDER_MAINTENANCE | P-101A DEGRADED at 01:10:34 |
+| `status` (state) | RUNNING, DEGRADED (health < 0.75 while running), STANDBY, STOPPED, FAILED (health ≤ 0.05 or `failed` channel), UNDER_MAINTENANCE. DEGRADED encodes the true health band, so the **operational** status reports it as RUNNING. | P-101A DEGRADED at 01:10:34 (canonical); RUNNING (operational) |
 | `is_running` | 1 when status is RUNNING or DEGRADED | — |
 | `efficiency` (capability) | `clip(health) × (1 − efficiency_loss)` for pumps, cooling tower, boiler and compressor. **Placeholder 1.0** on WU-TX-401, WU-MCC-401 and EM-AGITATOR (A10). | — |
 | `available_flow` / `available_steam` / `available_kw` / `capability` / `supply_fraction` / `supply_temperature_rise` (capability) | deliverable output given efficiency, running state and electrical supply | P-101A `available_flow = 1100 × eff × run × pf` |
@@ -226,6 +226,12 @@ full relations are in [coupling relations](04_coupling/coupling_relations.md).
 
 `availability` is the capacity fraction. Steam pressure and temperature, and bus voltage, are computed
 but enter TEP nowhere.
+
+**Operational observability.** The status, availability, capacity fields and health of a utility are
+classified from model-internal capability, so they are `model_internal` and not served operationally.
+In the demo, `UT-CW-REACTOR` goes DEGRADED 18 min before the first symptom. `UTILITY_STATE_CHANGED`
+is withheld from the operational event stream. Meter-like values (flow, demand, pressure,
+temperature, voltage, and utilization except for steam) stay operational (decision D1 in the audit).
 
 ## 13. Production state
 
@@ -290,8 +296,24 @@ but enter TEP nowhere.
 **Visibility and correlation:**
 
 * The five `FAULT_*` types are `benchmark` visibility.
-* `correlation_id` and `causation_id` on operational events may carry a fault id. That is ground
-  truth (§20).
+* In the canonical log, `correlation_id` and `causation_id` may carry a fault id. That is ground truth
+  (§20).
+
+**Operational event stream** (`/api/events`; rules in `operational_boundary` of the YAML):
+
+* **Withheld:**
+  * `FAULT_*`;
+  * `UTILITY_STATE_CHANGED` and `EQUIPMENT_DEGRADED`, which record changes of model-internal state;
+  * `EQUIPMENT_STATE_CHANGED` when old and new status map to the same operational status.
+* **Ids:** simulation events get `OE-nnnnnnn`, sequential over the operational stream, so withheld
+  events leave no gaps. `LC-` ids are unchanged.
+* **Correlation:** `causation_id` is the operational id of the causing event if that event is in the
+  stream, else null. `correlation_id` is the causing event's operational correlation, else the event's
+  own id. Example: a work order links to the vibration alarm that raised it.
+* **Payload fields removed:** health values, fault ids, the fault-vs-wear failure reason, and scenario
+  identity.
+* **Evaluator mapping:** `/api/benchmark/events` returns the canonical events, each with its
+  `operational_id`.
 
 **References:** machine-readable list in `contract/canonical_contract.yaml`; observed payloads in
 [event catalog](05_state_and_events/event_catalog.md); lifecycle in
@@ -435,20 +457,29 @@ fault's contributions entirely. See [scenario model](06_scenarios/scenario_model
 | `health`, capability, availability, lot composition and deviations | simulation truth (model-internal) | entity properties | evaluator; development |
 | transmitted XMEAS, XMV, setpoints, modes, alarms, statuses, vibration, utility observations, records | operational | canonical state | a plant operator; a future system under test |
 
-**Simulation truth vs operationally observable information:**
+**Simulation truth vs operationally observable information** (the operational boundary, contract
+0.2.0):
 
-* **Enforced today:**
-  * fault *control* exists only under `/api/benchmark/*`;
-  * FAULT_* events are excluded from `/api/events`.
-* **Not enforced today:**
-  * the other truth reaches operational routes, as leaks G1–G12
-    ([benchmark limitations](11_limitations/benchmark_limitations.md));
-  * `contract/canonical_contract.yaml` → `api_routes` records, for every route, which exposures it
-    carries.
-* **Rule for downstream layers:** an agent-facing layer must be built from an explicit **allow-list**
-  of operational classes. It must strip fault-derived correlation, and must not forward development
-  or benchmark routes. Until that exists, the current API is a benchmark-operator and development
-  interface.
+* **Operational routes** (`/api/*` outside `/api/benchmark/*`) are built by `api/operational.py` and
+  serve only operational information:
+  * properties tagged `model_internal` or `unobservable` by their owning module are withheld, and
+    answer 404 like missing properties;
+  * asset DEGRADED is reported as RUNNING;
+  * the event stream follows §16;
+  * the manifest has no scenario identity, run id, seeds, configuration hash or event count. With the
+    seed, a consumer could replay a fault-free twin and difference it against the faulted run;
+  * the process image has no boundary values, true XMEAS or IDV flags;
+  * history has no `TRUE:` series or hidden-property series.
+* **Benchmark routes** (`/api/benchmark/*`): fault control, ground truth, evaluator views of the same
+  data (`/api/benchmark/simulation`, `manifest`, `entities/{id}`, `events`, `history`,
+  `process/image`, …), exports, scenario files, and the web UI's console snapshot.
+* **Evidence:** `tests/test_operational_boundary.py`. Before the first observable symptom, the
+  operational event stream of the faulted demo is identical, ids included, to that of the same scenario
+  without the fault.
+* **Rule for downstream layers:** consume the operational routes only. There is no authentication; the
+  route namespace is the boundary.
+* **Decisions** that define what counts as a legitimate observation (D1–D5) are recorded in the
+  [contract audit](CANONICAL_CONTRACT_AUDIT.md).
 
 ## 21. Time semantics
 
@@ -495,7 +526,7 @@ There are two independent versions:
 
 * **Simulator version** (`simulator.__version__`, currently 1.0.0, recorded in every run manifest):
   identifies the *behaviour*.
-* **Contract version** (`contract.version` in `contract/canonical_contract.yaml`, currently 0.1.0):
+* **Contract version** (`contract.version` in `contract/canonical_contract.yaml`, currently 0.2.0):
   identifies the *documented semantics*. It is not stored in run outputs (see §25).
 
 **Rules (semantic versioning of the contract):**
@@ -512,25 +543,34 @@ There are two independent versions:
 * **Pre-1.0:** the contract stays 0.x while the ambiguities in the
   [contract audit](CANONICAL_CONTRACT_AUDIT.md) remain undecided.
 
+**History:**
+
+* **0.1.0:** first contract.
+* **0.2.0:** operational boundary.
+  * Operational routes, events, manifest and history no longer carry ground truth.
+  * Utility status, availability and capacity fields became model-internal; storage deviations became
+    unobservable; storage `supply_availability` became operational.
+  * Truth-bearing routes moved under `/api/benchmark/*`.
+
+  This is a breaking change of the operational interface, bumped as MAJOR within 0.x.
+
 ## 24. Current limitations of the contract
 
-* **Ambiguities:** several semantics are ambiguous in the implementation and are recorded rather than
-  resolved (A1–A12 in the audit). Examples: utility `status` depends on model-internal availability;
-  the power demand is labelled an observation but feeds supply; property names are reused with
-  different meanings across entity kinds.
+* **Ambiguities:** several semantics remain ambiguous and are recorded rather than resolved (see the
+  audit). Examples: property names are reused with different meanings across entity kinds; correlation
+  labels in the canonical log are heuristic.
 * **Payloads:** event payloads are documented by observation (event catalog), not by a per-type
   schema.
 * **Process variables:** the per-variable semantics of XMEAS, XMV and IDV are referenced from the
   generated tables, not duplicated here.
-* **Ground-truth exposure:** the contract documents it; it does not prevent it.
+* **No authentication:** the operational boundary is the route namespace.
 
 ## 25. Future considerations
 
 These are not implemented:
 
-* an allow-listed **observable view** served separately from benchmark and development routes, with
-  fault-derived correlation stripped (resolves G1–G12);
-* tagging `*_deviation` storage properties `unobservable` (A1);
+* serving the operational routes from a separate process or behind access control;
+* an observable-only utility status (from meter readings), if operational consumers need one;
 * per-event-type payload schemas;
 * recording the contract version in the run manifest;
 * distinct property names where one name has several meanings (A2);

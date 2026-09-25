@@ -12,7 +12,7 @@ Ctrl+C.
 
 ## The UI
 
-The UI is plain HTML/CSS/JS in `ui/` with no build step. It polls `/api/ui/snapshot` every 1 s, renders
+The UI is plain HTML/CSS/JS in `ui/` with no build step. It polls `/api/benchmark/ui/snapshot` every 1 s, renders
 trends every 2 s and refreshes the active tab every 3 s.
 
 | Area | Content |
@@ -36,7 +36,7 @@ flowchart LR
   DET -->|POST /api/operator/*| API
   TABS -->|GET module routes, /api/benchmark/* for faults| API
   TR -->|GET /api/history| API
-  Browser -->|GET /api/ui/snapshot every 1 s| API["FastAPI"]
+  Browser -->|GET /api/benchmark/ui/snapshot every 1 s| API["FastAPI"]
 ```
 
 ## Headless

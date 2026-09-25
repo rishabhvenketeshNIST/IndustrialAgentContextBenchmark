@@ -26,7 +26,7 @@ the implementation detail behind [canonical contract §17](../CANONICAL_SIMULATO
 | IDV flags | `process.idv` | every step |
 | Shutdown condition | `/TEPROC/ PTR, TCR, VLR, VLS, VLC` via `_internals` | every step |
 | Boundary values (after clamping) | `get_boundary_parameters` | on write |
-| 50 states | `get_states`: diagnostic API only (`/api/process/internal-states`) and the reproducibility tests | on request |
+| 50 states | `get_states`: diagnostic API only (`/api/benchmark/process/internal-states`) and the reproducibility tests | on request |
 | TEP TIME | `get_time` → `process.tep_time_h` | every step |
 
 ## What cannot be directly modified?
