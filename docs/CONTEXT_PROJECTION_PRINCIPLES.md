@@ -1,7 +1,8 @@
 # Context projection principles
 
-Rules that future UNS, historian and knowledge-graph implementations must follow. **None of these
-systems exists yet.** This page constrains them in advance.
+Rules that UNS, historian and knowledge-graph implementations must follow. **The UNS is implemented**
+as an ISA-95-based MQTT namespace ([UNS.md](UNS.md)); the historian and knowledge graph do not exist
+yet. This page constrains them in advance.
 
 ```
 Enterprise Simulator (source of truth)

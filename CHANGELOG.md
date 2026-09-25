@@ -4,6 +4,30 @@ Notable changes to this repository. The simulator version is `simulator.__versio
 contract version is `contract.version` in `contract/canonical_contract.yaml`
 (see [contract §23](docs/CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)).
 
+## [Unreleased]: ISA-95-based MQTT Unified Namespace
+
+**No simulator, API, configuration, scenario or contract-semantics change.** Adds the Unified Namespace:
+an ISA-95-based manufacturing information space implemented over MQTT, projected from the canonical
+context model through the operational boundary.
+
+### Added
+
+- `uns/`: the namespace (topics from the existing ISA-95 hierarchy and the context model), the
+  publisher (state, measurement, event, meta and lifecycle channels; retained-state, QoS and reconnect
+  policy), and a local Eclipse Mosquitto helper and configuration.
+- `scripts/run_uns.py`: runs a scenario and publishes it to a broker (`--start-broker` starts one).
+- `tests/test_uns.py`: 15 tests against a real Mosquitto broker, including hidden-fault
+  non-disclosure and the full 3-hour demo over MQTT.
+- `docs/UNS.md`, `docs/UNS_MQTT_NAMESPACE.md`, `docs/UNS_MQTT_SEMANTICS.md`,
+  `docs/UNS_OPERATING_MODEL.md`.
+- Dependency `paho-mqtt`; a broker (Eclipse Mosquitto) is needed for the UNS and its tests (the tests
+  skip without it).
+
+### Open
+
+- R-01: no operational run key. Subscribers detect a new identity scope from lifecycle events; a
+  retained-state-only subscriber cannot tell two scopes apart (docs/UNS_MQTT_SEMANTICS.md).
+
 ## [Unreleased]: canonical context model 0.2.0
 
 Specification release. **No simulator, API or configuration change.** It reverse-engineers the

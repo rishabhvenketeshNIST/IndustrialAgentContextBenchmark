@@ -1,6 +1,7 @@
 # Canonical simulator contract - machine-readable part.
 #
-# DOCUMENTATION METADATA ONLY. Nothing in simulator/, api/ or run.py reads this file; it has no
+# DOCUMENTATION METADATA for the simulator: nothing in simulator/, api/ or run.py reads this file (the
+# MQTT Unified Namespace, uns/, reads its property classes to route properties); it has no
 # effect on simulation behaviour, configuration hashes or run ids. It records the *semantics* of
 # what the simulator produces, so that downstream consumers (UNS, historian, KG, i3X, MCP, agents)
 # can rely on them. The human-readable contract is docs/CANONICAL_SIMULATOR_CONTRACT.md.

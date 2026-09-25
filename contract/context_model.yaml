@@ -1,6 +1,7 @@
 # Canonical context model - machine-readable definition.
 #
-# DOCUMENTATION METADATA ONLY. Nothing in simulator/, api/ or run.py reads this file. It organises
+# DOCUMENTATION METADATA for the simulator: nothing in simulator/, api/ or run.py reads this file. The
+# MQTT Unified Namespace (uns/, docs/UNS.md) reads it as its semantic authority. It organises
 # what the enterprise simulator already produces into identity, observations, state, events and
 # relationships, and maps it to ISA-95 (IEC 62264) reference semantics. It does not define a second
 # hierarchy: every entity type below selects entities or records that the simulator already has.
