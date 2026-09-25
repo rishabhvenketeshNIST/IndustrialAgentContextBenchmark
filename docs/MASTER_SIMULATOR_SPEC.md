@@ -5,7 +5,9 @@
 repository. Where the implementation is incomplete or differs from earlier documentation, the text
 says so. Detailed pages are linked from each section. The exact meaning, ownership and observability of
 everything the simulator produces is defined in the **[canonical simulator contract](CANONICAL_SIMULATOR_CONTRACT.md)**;
-where this specification summarises the same concepts, the contract is authoritative.
+where this specification summarises the same concepts, the contract is authoritative. The
+[canonical context model](CONTEXT_MODEL.md) organises that output (identity, observations, state,
+events, relationships) and maps it to ISA-95 ([mapping](ISA95_SIMULATOR_MAPPING.md)).
 
 ---
 

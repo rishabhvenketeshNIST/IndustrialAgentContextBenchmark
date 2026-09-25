@@ -4,6 +4,76 @@ Notable changes to this repository. The simulator version is `simulator.__versio
 contract version is `contract.version` in `contract/canonical_contract.yaml`
 (see [contract §23](docs/CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)).
 
+## [Unreleased]: canonical context model 0.2.0
+
+Specification release. **No simulator, API or configuration change.** It reverse-engineers the
+simulator's existing manufacturing model, organises it as a canonical context model for future
+information systems, and maps it to ISA-95.
+
+### Added
+
+- `docs/CONTEXT_MODEL.md`, the primary specification. It covers:
+  - the existing hierarchy (87 elements, reverse-engineered);
+  - identity (`<entity_type>:<native_id>`, with aliases);
+  - observations, state domains, events (operational `OE-` vs evaluator `EV-` identity) and
+    relationships;
+  - timestamps, units and observability;
+  - future observability conditions and projections.
+- `docs/ISA95_SIMULATOR_MAPPING.md`: every simulator concept mapped to IEC 62264 as DIRECT /
+  COMPOSITE / DERIVED / MODELING_CHOICE / PARTIAL / NOT_REPRESENTED, across the functional hierarchy,
+  equipment, production, material, maintenance, quality and utilities, with per-item reasoning for
+  the TEP process equipment.
+- `docs/CONTEXT_MODEL_DECISIONS.md`: 19 decisions, 4 inconsistencies found, and 7 questions for human
+  approval.
+- `docs/CONTEXT_PROJECTION_PRINCIPLES.md`: rules for future UNS, historian and KG projections.
+- `contract/context_model.yaml`, the machine-readable definition (documentation metadata; read by no
+  runtime code).
+- `tests/test_context_model.py`, 12 tests. They check that:
+  - entity types select what the simulator has, and every simulator entity and record has exactly one
+    canonical identity;
+  - vocabularies are valid;
+  - relationships connect defined types;
+  - observations define units and timestamps;
+  - observability agrees with the operational boundary for every property in a full demo run;
+  - NOT_REPRESENTED concepts are not invented.
+
+### Changed
+
+- Navigation: `README.md`, `docs/README.md` and the master specification link the context model.
+
+### Decisions resolved (context model 0.1.0 → 0.2.0)
+
+- **U-01:** TEP equipment stays Equipment Module.
+- **U-02:** utility status stays evaluator-only. A future derived status may use only observable
+  inputs.
+- **U-03:** new canonical relationship `yields_material` (product → material, 1 → 1; a material is
+  yielded by 0..n products; configuration-derived; operational master data), plus the derived
+  `lot_material`. `PROD-GH-M1` and `MAT-GH` stay distinct identities.
+- **U-04:** asset/service topology (`supports_utility`) is operational and carries no health, status or
+  fault attribute.
+- **U-05:** the canonical id `<entity_type>:<native_id>` is frozen:
+  - no `:` in native ids;
+  - uniqueness is static or run-scoped;
+  - projections carry the id verbatim.
+- **U-06:** customers and suppliers are out of scope.
+- **U-07:** lifecycle events are part of the canonical event model (ids, entity, transitions,
+  operational payloads).
+- **Remaining ambiguity R-01:** no operational run key exists, so run-scoped ids restart on reset.
+- **New tests:** `test_u03_…`, `test_u05_…`, `test_u07_…`.
+
+### Validation
+
+- `python -m pytest`: 119 passed (104 existing + 15 new).
+- No file under `simulator/`, `api/`, `configs/`, `scenarios/` or `ui/` changed; the demo fingerprint
+  is unchanged.
+- `python scripts/check_docs.py`: OK.
+
+### Known limitations
+
+- The context model is a draft (0.2.0). R-01 (operational run identity) remains open.
+- The canonical state keeps no per-value change timestamps; a historian projection must sample at step
+  boundaries.
+
 ## [Unreleased]: operational information boundary (contract 0.2.0)
 
 Closes the operational ground-truth leaks found by the contract audit. **Simulator behaviour is
