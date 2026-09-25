@@ -87,6 +87,7 @@ backend with a warning; the Fortran backend is the authoritative validation back
 * **[docs/README.md - read this first](docs/README.md)**: reading order and the 10-minute mental model
 * **[Master simulator specification](docs/MASTER_SIMULATOR_SPEC.md)**
 * **[Canonical simulator contract](docs/CANONICAL_SIMULATOR_CONTRACT.md)**: exact semantics of everything the simulator produces
+* **[Canonical context model](docs/CONTEXT_MODEL.md)**: identity, observations, state, events and relationships for future UNS / historian / KG projections, with the [ISA-95 mapping](docs/ISA95_SIMULATOR_MAPPING.md)
 * [Learning guide](docs/LEARNING_GUIDE.md): 17 levels, from "what is this" to extending it
 * [Worked demo, step by step](docs/06_scenarios/scenario_examples/SCN-COOL-001.md)
 * [The TEP boundary contract](docs/04_coupling/coupling_contract.md)

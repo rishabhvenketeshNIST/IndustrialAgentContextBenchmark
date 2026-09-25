@@ -1,0 +1,247 @@
+# Canonical context model - machine-readable definition.
+#
+# DOCUMENTATION METADATA ONLY. Nothing in simulator/, api/ or run.py reads this file. It organises
+# what the enterprise simulator already produces into identity, observations, state, events and
+# relationships, and maps it to ISA-95 (IEC 62264) reference semantics. It does not define a second
+# hierarchy: every entity type below selects entities or records that the simulator already has.
+#
+# Human-readable specification: docs/CONTEXT_MODEL.md. ISA-95 rationale: docs/ISA95_SIMULATOR_MAPPING.md.
+# Decisions and open ambiguities: docs/CONTEXT_MODEL_DECISIONS.md. Checked by tests/test_context_model.py.
+#
+# Observability vocabulary (follows the operational boundary, contract §20 / api/operational.py):
+#   operational            - served by operational routes as-is
+#   derived_operational    - operational routes serve a derived form (e.g. asset status without DEGRADED)
+#   evaluator_only         - simulator truth; available only under /api/benchmark
+#   derived_evaluator_only - derived from evaluator-only information; available only under /api/benchmark
+#   internal               - exists in the simulator but is served by no route
+
+context_model:
+  version: 0.1.0
+  status: draft
+  describes_simulator_version: 1.0.0
+  canonical_contract_version: 0.2.0
+
+vocabularies:
+  mapping: [DIRECT, COMPOSITE, DERIVED, MODELING_CHOICE, PARTIAL, NOT_REPRESENTED]
+  observability: [operational, derived_operational, evaluator_only, derived_evaluator_only, internal]
+  timestamp: [step_state, analyzer_sample, record_fields, event_time, static]
+
+# ------------------------------------------------------------------------------------------------
+# Identity
+# ------------------------------------------------------------------------------------------------
+identity:
+  canonical_id: "<entity_type>:<native_id>"
+  rule: >-
+    The native id is the simulator's own identifier, unchanged. Native ids are unique only within a
+    type (production orders PO-2026-nnnn and purchase orders PO-nnnnn share a prefix), so the canonical
+    id is always type-qualified. Aliases (loop number, instrument tag, XMEAS index) resolve to one
+    canonical id.
+
+entity_types:
+  # ---- ISA-95 equipment hierarchy: selected from the simulator hierarchy (configs/site.yaml) --------
+  enterprise:      {source: {hierarchy_level: Enterprise}, owner: Hierarchy, lifecycle: static, observability: operational, isa95: M-ENTERPRISE}
+  site:            {source: {hierarchy_level: Site}, owner: Hierarchy, lifecycle: static, observability: operational, isa95: M-SITE}
+  area:            {source: {hierarchy_level: Area}, owner: Hierarchy, lifecycle: static, observability: operational, isa95: M-AREA}
+  production_unit: {source: {hierarchy_level: ProductionUnit}, owner: Hierarchy, lifecycle: static, observability: operational, isa95: M-PRODUCTION-UNIT}
+  work_center:     {source: {hierarchy_level: WorkCenter}, owner: Hierarchy, lifecycle: static, observability: operational, isa95: M-WORK-CENTER}
+  work_unit:       {source: {hierarchy_level: WorkUnit}, owner: Hierarchy, lifecycle: static, observability: operational, isa95: M-WORK-UNIT}
+  storage_zone:    {source: {hierarchy_level: StorageZone}, owner: Hierarchy, lifecycle: static, observability: operational, isa95: M-STORAGE-ZONE}
+  storage_unit:    {source: {hierarchy_level: StorageUnit}, owner: Hierarchy, lifecycle: static, observability: operational, isa95: M-STORAGE-UNIT}
+  equipment_module: {source: {hierarchy_level: EquipmentModule}, owner: Hierarchy, lifecycle: static, observability: operational, isa95: M-EQUIPMENT-MODULE}
+  control_module:  {source: {hierarchy_level: ControlModule}, owner: Hierarchy, lifecycle: static, observability: operational, isa95: M-CONTROL-MODULE,
+                    note: "subclasses by equipment class: pid_loop, control_valve, variable_speed_drive, online_analyzer"}
+
+  # ---- other entities of the canonical state --------------------------------------------------------
+  utility:  {source: {entity_kind: utility}, config: configs/utilities.yaml, owner: UtilitiesModule, lifecycle: static, observability: operational, isa95: M-UTILITY}
+  material: {source: {entity_kind: material}, config: configs/materials.yaml, owner: MaterialsModule, lifecycle: static, observability: operational, isa95: M-MATERIAL-DEFINITION}
+  product:  {source: {config_key: "production.products"}, config: configs/production.yaml, owner: ProductionModule, lifecycle: static, observability: operational, isa95: M-PRODUCT-DEFINITION,
+             note: "not a canonical-state entity; referenced by production orders and production lots (product_id)"}
+
+  # ---- records (canonical-state collections) ---------------------------------------------------------
+  material_lot:     {source: {collection: material_lots}, owner: InventoryModule, lifecycle: "received -> consumed (FIFO); quality_status RELEASED | QUARANTINE | REJECTED | CONSUMED", observability: operational, isa95: M-MATERIAL-LOT,
+                     note: "the attributes field is certificate composition; storage composition/deviation properties are evaluator_only"}
+  production_lot:   {source: {collection: production_lots}, owner: ProductionModule, lifecycle: "IN_PROCESS -> AWAITING_QC -> RELEASED | QUARANTINE | REJECTED", observability: operational, isa95: M-PRODUCTION-LOT}
+  production_order: {source: {collection: production_orders}, owner: SchedulingModule, lifecycle: "PLANNED -> RELEASED -> RUNNING <-> PAUSED/BLOCKED -> COMPLETED | CANCELLED", observability: operational, isa95: M-PRODUCTION-ORDER}
+  purchase_order:   {source: {collection: purchase_orders}, owner: InventoryModule, lifecycle: "OPEN -> DELAYED -> RECEIVED | CANCELLED", observability: operational, isa95: M-PURCHASE-ORDER}
+  shipment:         {source: {collection: shipments}, owner: WarehouseModule, lifecycle: "SCHEDULED -> SHIPPED | DELAYED", observability: operational, isa95: M-SHIPMENT}
+  work_order:       {source: {collection: work_orders}, owner: MaintenanceModule, lifecycle: "REQUESTED -> WAITING_PARTS/WAITING_TECHNICIAN -> SCHEDULED -> IN_PROGRESS -> COMPLETED | CANCELLED", observability: operational, isa95: M-WORK-ORDER}
+  technician:       {source: {collection: technicians}, owner: MaintenanceModule, lifecycle: "AVAILABLE | BUSY | OFF_SHIFT", observability: operational, isa95: M-PERSON}
+  spare_part:       {source: {collection: spare_parts}, owner: InventoryModule, lifecycle: "stock on_hand / reserved / blocked", observability: operational, isa95: M-SPARE-PART}
+  quality_sample:   {source: {collection: quality_samples}, owner: QualityModule, lifecycle: "created with its result", observability: operational, isa95: M-QUALITY-SAMPLE}
+  alarm:            {source: {collection: alarms}, owner: AlarmModule, lifecycle: "NORMAL <-> ACTIVE_UNACK / ACTIVE_ACK / RTN_UNACK", observability: operational, isa95: M-ALARM}
+  operator_action:  {source: {collection: operator_log}, owner: OperatorModule, lifecycle: "append-only", observability: internal, isa95: M-OPERATOR,
+                     note: "the log is served by no route; each action is also an operational OPERATOR_ACTION event"}
+  fault:            {source: {collection: faults}, owner: FaultEngine, lifecycle: "CREATED -> SCHEDULED -> ACTIVE -> STOPPED -> RESET", observability: evaluator_only, isa95: M-FAULT}
+
+  # ---- process variables and configuration-defined identities ---------------------------------------
+  measurement:          {source: {catalog: XMEAS}, owner: TEP, lifecycle: static identity, observability: operational, isa95: M-MEASUREMENT,
+                         aliases: ["instrument tag (configs/tep_mapping.yaml, e.g. TI-09)", "bound property (e.g. EM-REACTOR.temperature)"]}
+  manipulated_variable: {source: {catalog: XMV}, owner: TEP, lifecycle: static identity, observability: operational, isa95: M-MEASUREMENT}
+  disturbance:          {source: {catalog: IDV}, owner: TEP, lifecycle: static identity, observability: operational, isa95: M-DISTURBANCE,
+                         note: "identity and documentation are operational; the live on/off state is evaluator_only"}
+  control_loop:         {source: {control_loops: simulator/tep/control_scheme.py}, owner: TEP native control, lifecycle: static identity, observability: operational, isa95: M-CONTROL-LOOP,
+                         aliases: ["loop number (1-20)", "loop tag (e.g. TC-RX)"], canonical_identity_of: control_module,
+                         note: "a loop's canonical identity is its pid_loop control module (configs/tep_mapping.yaml loops)"}
+  quality_test:         {source: {config_key: "quality.product_specifications"}, config: configs/quality.yaml, owner: QualityModule, lifecycle: static, observability: operational, isa95: M-QUALITY-SPEC}
+  maintainable_asset:   {source: {config_key: "equipment.assets"}, config: configs/equipment.yaml, owner: EquipmentModule, lifecycle: static role, observability: operational, isa95: M-PHYSICAL-ASSET,
+                         role_of: [work_unit, equipment_module], note: "a role on existing hierarchy elements, not a separate identity"}
+  event:                {source: {event_log: simulator/events}, owner: EventBus, lifecycle: append-only, observability: derived_operational, isa95: M-EVENT,
+                         note: "operational identity OE-/LC- (api/operational.py); evaluator identity EV-/LC-"}
+
+# ------------------------------------------------------------------------------------------------
+# Observations (every operational observation is served by the operational routes; evaluator_only
+# ones only under /api/benchmark). Property lists refer to contract/canonical_contract.yaml scopes.
+# ------------------------------------------------------------------------------------------------
+observations:
+  process_measurement:     {subject: measurement, value: "transmitted XMEAS (process.xmeas) with quality GOOD|BAD", unit: {from: "catalog XMEAS unit"}, timestamp: analyzer_sample, observability: operational,
+                            note: "XMEAS 1-22 change every step (step_state); XMEAS 23-41 change at analyzer sample times and represent the process one dead time earlier"}
+  true_process_measurement: {subject: measurement, value: "process.xmeas_true", unit: {from: "catalog XMEAS unit"}, timestamp: step_state, observability: evaluator_only}
+  manipulated_variable_value: {subject: manipulated_variable, value: "process.xmv (command, %)", unit: {literal: "%"}, timestamp: step_state, observability: operational}
+  setpoint:                {subject: control_loop, value: "process.setpoints / loop setpoint", unit: {from: "unit of the loop's PV"}, timestamp: step_state, observability: operational}
+  controller_output:       {subject: control_loop, value: "loop output (an XMV in %, or a slave setpoint)", unit: {from: "XMV % or slave PV unit"}, timestamp: step_state, observability: operational}
+  loop_mode:               {subject: control_loop, value: "AUTO | CAS | MAN; plant CLOSED_LOOP | MANUAL", unit: {literal: enumeration}, timestamp: step_state, observability: operational}
+  controller_saturation:   {subject: control_loop, value: "saturated (bool)", unit: {literal: boolean}, timestamp: step_state, observability: operational}
+  process_shutdown:        {subject: site, value: "process.shutdown, shutdown_reason", unit: {literal: enumeration}, timestamp: step_state, observability: operational}
+  equipment_run_state:     {subject: maintainable_asset, properties: {asset: [is_running, desired_state, role]}, unit: {literal: enumeration}, timestamp: step_state, observability: operational}
+  equipment_status:        {subject: maintainable_asset, properties: {asset: [status]}, unit: {literal: enumeration}, timestamp: step_state, observability: derived_operational,
+                            note: "operationally DEGRADED is reported as RUNNING (api/operational.py); the canonical status is derived_evaluator_only"}
+  condition_indicator:     {subject: maintainable_asset, properties: {asset: [vibration]}, unit: {from: entity_units}, timestamp: step_state, observability: operational}
+  run_hours:               {subject: maintainable_asset, properties: {asset: [run_hours]}, unit: {from: entity_units}, timestamp: step_state, observability: operational}
+  equipment_condition:     {subject: maintainable_asset, properties: {asset: [health, efficiency, available_flow, available_steam, available_kw, capability, supply_fraction, supply_temperature_rise]}, unit: {from: entity_units}, timestamp: step_state, observability: evaluator_only}
+  utility_meter:           {subject: utility, properties: {utility: [flow, demand, process_demand, return_temperature, temperature, pressure, voltage, shed_load]}, unit: {from: entity_units}, timestamp: step_state, observability: operational}
+  utility_utilization:     {subject: utility, properties: {utility: [utilization]}, unit: {literal: fraction}, timestamp: step_state, observability: operational,
+                            exceptions: {steam: evaluator_only}}
+  utility_state:           {subject: utility, properties: {utility: [status, availability, capacity_fraction, available_capacity, available_for_process, process_supply_fraction, health]}, unit: {from: entity_units}, timestamp: step_state, observability: evaluator_only}
+  inventory_quantity:      {subject: storage_unit, properties: {storage: [quantity_kg, usable_kg, reserved_kg, available_kg, consumption_kg_h, level_pct, supply_availability, status, current_lot, lots]}, unit: {from: entity_units}, timestamp: step_state, observability: operational}
+  material_composition:    {subject: storage_unit, properties: {storage: [feed_impurity, feed_a_fraction, feed_b_fraction, feed_impurity_deviation, feed_a_fraction_deviation, feed_b_fraction_deviation]}, unit: {from: "materials.yaml attribute_units"}, timestamp: step_state, observability: evaluator_only}
+  quality_result:          {subject: quality_sample, value: "sample results (value, limits, pass) and overall PASS|FAIL; laboratory properties", properties: {laboratory: [last_result, last_result_fail, consecutive_failures]}, unit: {from: "quality.yaml test unit"}, timestamp: record_fields, observability: operational,
+                            note: "taken_s is the analyzer update time; represents_s = taken_s - 900 for product samples"}
+  lot_status:              {subject: [production_lot, material_lot], value: "status / quality_status, quantity", unit: {literal: kg}, timestamp: record_fields, observability: operational}
+  production_state:        {subject: production_unit, value: "state.production: line state RUNNING|REDUCED_RATE|DOWN, rate, totals, OEE (line_id PU-STRIPPER)", unit: {literal: "kg/h, kg, s, fraction"}, timestamp: step_state, observability: operational}
+  order_status:            {subject: production_order, value: "status, produced/accepted/rejected kg, projected end, late", unit: {literal: kg}, timestamp: record_fields, observability: operational}
+  maintenance_state:       {subject: [work_order, technician, spare_part], value: "work-order status and times, technician status, part stock", unit: {literal: "enumeration, count, s"}, timestamp: record_fields, observability: operational}
+  alarm_state:             {subject: alarm, value: "state, value, activation/clear/ack times, priority", unit: {literal: "enumeration; value in the source unit"}, timestamp: record_fields, observability: operational}
+  procurement_state:       {subject: [purchase_order, shipment], value: "status, quantities, due/received times", unit: {literal: "kg or count, s"}, timestamp: record_fields, observability: operational}
+  process_internal_state:  {subject: site, value: "50 TEP states, IDV flags, boundary parameters", unit: {from: "catalog STATES / boundary units"}, timestamp: step_state, observability: evaluator_only}
+  fault_truth:             {subject: fault, value: "fault records, cause channels, causal registry, sensor overlays", unit: {literal: "n/a"}, timestamp: record_fields, observability: evaluator_only}
+
+# ------------------------------------------------------------------------------------------------
+# State domains (who owns what; see contract §6-§15)
+# ------------------------------------------------------------------------------------------------
+state_domains:
+  process_physical:      {owner: TEP (TEFUNC), holds: "50 states, true XMEAS", observability: evaluator_only, observed_through: process_measurement}
+  process_control:       {owner: TEP native control + operator, holds: "XMV, SETPT, loop modes", observability: operational}
+  equipment_operational: {owner: EquipmentModule, holds: "run state, status, vibration, run hours", observability: derived_operational}
+  equipment_condition:   {owner: EquipmentModule + CouplingEngine, holds: "health, capability", observability: evaluator_only}
+  utility_supply:        {owner: CouplingEngine + UtilitiesModule, holds: "meters (operational); capacity, availability, status (evaluator_only)", observability: derived_operational}
+  material_inventory:    {owner: InventoryModule + WarehouseModule, holds: "stock, lots, locations, parts, purchase orders, shipments", observability: operational}
+  production:            {owner: ProductionModule + SchedulingModule, holds: "line state, rate, lots, orders", observability: operational}
+  quality:               {owner: QualityModule, holds: "samples, results, lot disposition", observability: operational}
+  maintenance:           {owner: MaintenanceModule, holds: "work orders, technicians", observability: operational}
+  benchmark:             {owner: FaultEngine + CausalRegistry, holds: "faults, causes, correlation", observability: evaluator_only}
+
+# ------------------------------------------------------------------------------------------------
+# Events: the 46 types of contract/canonical_contract.yaml, presented through the operational boundary
+# ------------------------------------------------------------------------------------------------
+events:
+  types_source: contract/canonical_contract.yaml#events
+  operational_presentation: contract/canonical_contract.yaml#operational_boundary.event_stream
+  identity:
+    operational: {prefixes: [OE, LC], note: "OE- sequential over the operational stream only; safe to expose"}
+    evaluator:   {prefixes: [EV, LC], note: "canonical log ids; mapped to operational ids by /api/benchmark/events operational_id"}
+  timestamp: {semantics: event_time, fields: [simulation_time, timestamp],
+              note: "integer simulation seconds; ISO timestamp = simulation_start + simulation_time; pre-step events carry t, post-step and TEP-derived events t+1"}
+  entity: "target (entity or record id); source = publishing module"
+  relationships: {operational: "causation_id / correlation_id rebuilt from operational causation", evaluator_only: "canonical correlation to faults"}
+
+# ------------------------------------------------------------------------------------------------
+# Relationships (only those the simulator supports)
+# ------------------------------------------------------------------------------------------------
+relationships:
+  contains:              {from: [enterprise, site, area, production_unit, work_center, storage_zone, work_unit, storage_unit, equipment_module, control_module], to: [site, area, production_unit, work_center, storage_zone, work_unit, storage_unit, equipment_module, control_module], source: "configs/site.yaml parent/children", observability: operational}
+  measures:              {from: measurement, to: [equipment_module, control_module], source: "configs/tep_mapping.yaml xmeas (bound entity.property)", observability: operational}
+  actuates:              {from: control_module, to: manipulated_variable, source: "configs/tep_mapping.yaml xmv", observability: operational}
+  manipulates:           {from: manipulated_variable, to: equipment_module, source: "configs/tep_mapping.yaml xmv process_equipment", observability: operational}
+  controls:              {from: control_loop, to: [manipulated_variable, control_loop], source: "simulator/tep/control_scheme.py (output XMV or cascade SETPT)", observability: operational}
+  uses_measurement:      {from: control_loop, to: measurement, source: "simulator/tep/control_scheme.py (PV)", observability: operational}
+  supplied_by:           {from: utility, to: work_center, source: "configs/utilities.yaml supplied_by", observability: operational}
+  serves:                {from: utility, to: [equipment_module, work_center], source: "configs/utilities.yaml serves", observability: operational}
+  supports_utility:      {from: work_unit, to: utility, source: "configs/coupling.yaml utility_supply inputs (equipment structure only)", observability: operational,
+                          note: "the structural fact that pumps/boiler/transformer supply a service is design knowledge; the relation's values and equations are evaluator_only"}
+  feeds:                 {from: storage_unit, to: equipment_module, source: "configs/site.yaml attributes.feeds", observability: operational}
+  stores:                {from: storage_unit, to: material, source: "configs/materials.yaml storage; configs/warehouse.yaml", observability: operational}
+  located_in:            {from: [material_lot, production_lot, spare_part], to: storage_unit, source: "record location", observability: operational}
+  lot_of:                {from: [material_lot, production_lot], to: [material, product], source: "material_id / product_id", observability: operational}
+  produced_for:          {from: production_lot, to: production_order, source: "production lot order_id", observability: operational}
+  orders_product:        {from: production_order, to: product, source: "production order product_id", observability: operational}
+  bill_of_materials:     {from: product, to: material, source: "configs/production.yaml bill_of_materials", observability: operational}
+  produced_on:           {from: product, to: production_unit, source: "configs/production.yaml line.id (PU-STRIPPER)", observability: operational}
+  sampled_from:          {from: quality_sample, to: [control_module, work_unit], source: "sample source (CM-AT-PRODUCT, WU-QC-LAB)", observability: operational}
+  sample_of:             {from: quality_sample, to: [production_lot, material_lot], source: "sample lot_id", observability: operational}
+  tested_against:        {from: quality_sample, to: quality_test, source: "sample results test_id", observability: operational}
+  work_order_for:        {from: work_order, to: [work_unit, equipment_module, work_center], source: "work order asset_id", observability: operational}
+  assigned_to:           {from: work_order, to: technician, source: "work order technician", observability: operational}
+  requires_part:         {from: work_order, to: spare_part, source: "work order parts", observability: operational}
+  asset_role_of:         {from: maintainable_asset, to: [work_unit, equipment_module], source: "configs/equipment.yaml assets", observability: operational}
+  redundant_with:        {from: maintainable_asset, to: maintainable_asset, source: "configs/equipment.yaml redundancy_group", observability: operational}
+  purchase_for:          {from: purchase_order, to: [material, spare_part], source: "purchase order item_id", observability: operational}
+  alarm_on:              {from: alarm, to: [equipment_module, control_module, work_unit, storage_unit, utility, site], source: "alarm equipment_id / source", observability: operational}
+  event_about:           {from: event, to: "any entity type", source: "event target", observability: derived_operational}
+  operationally_caused_by: {from: event, to: event, source: "operational causation_id (api/operational.py)", observability: derived_operational}
+  disturbance_acts_on:   {from: disturbance, to: [equipment_module, control_module], source: "configs/tep_mapping.yaml idv", observability: operational,
+                          note: "static documentation of where a TEP disturbance acts; whether it is active is evaluator_only"}
+  # evaluator-only causal truth
+  fault_targets:         {from: fault, to: "any entity type", source: "fault target", observability: evaluator_only}
+  correlated_with_fault: {from: event, to: fault, source: "canonical correlation_id / causal registry", observability: evaluator_only}
+  coupling_relation:     {from: "entity property", to: "entity property or boundary parameter", source: "configs/coupling.yaml relations (equations, values)", observability: evaluator_only}
+  process_influence:     {from: "boundary parameter", to: [measurement, manipulated_variable, equipment_module], source: "configs/coupling.yaml process_influences", observability: evaluator_only}
+
+# ------------------------------------------------------------------------------------------------
+# ISA-95 mapping (rationale: docs/ISA95_SIMULATOR_MAPPING.md). Parts: IEC 62264-1 (models), -2
+# (object attributes), -3 (activity models), -4 (MOM objects).
+# ------------------------------------------------------------------------------------------------
+isa95_mapping:
+  - {id: M-ENTERPRISE, simulator: "ENT-ACME (level Enterprise)", isa95: Enterprise, part: "62264-1 equipment hierarchy", mapping: DIRECT}
+  - {id: M-SITE, simulator: "SITE-TE (level Site)", isa95: Site, part: "62264-1 equipment hierarchy", mapping: DIRECT}
+  - {id: M-AREA, simulator: "AREA-* (8; 5 process sections, 3 enterprise-added)", isa95: Area, part: "62264-1 equipment hierarchy", mapping: DIRECT}
+  - {id: M-PRODUCTION-UNIT, simulator: "PU-* (5, one per TEP process area)", isa95: Production Unit, part: "62264-1 equipment hierarchy (continuous production)", mapping: DIRECT}
+  - {id: M-WORK-CENTER, simulator: "WC-CW, WC-STEAM, WC-POWER, WC-QC", isa95: Work Center, part: "62264-1 equipment hierarchy", mapping: MODELING_CHOICE}
+  - {id: M-WORK-UNIT, simulator: "WU-* (pumps, cooling tower, boiler, transformer, MCC, QC bench)", isa95: Work Unit, part: "62264-1 equipment hierarchy", mapping: DIRECT}
+  - {id: M-STORAGE-ZONE, simulator: "SZ-* (3)", isa95: Storage Zone, part: "62264-1 equipment hierarchy", mapping: DIRECT}
+  - {id: M-STORAGE-UNIT, simulator: "SU-* (9)", isa95: Storage Unit, part: "62264-1 equipment hierarchy", mapping: DIRECT}
+  - {id: M-EQUIPMENT-MODULE, simulator: "EM-* (13 TEP process equipment items)", isa95: "Equipment Module (lower-level equipment, ISA-88)", part: "62264-1 / ISA-88", mapping: MODELING_CHOICE}
+  - {id: M-CONTROL-MODULE, simulator: "CM-* (34: loops, valves, drive, analyzers)", isa95: "Control Module (lower-level equipment, ISA-88)", part: "62264-1 / ISA-88", mapping: DIRECT}
+  - {id: M-UNIT-LEVEL, simulator: "not used (EquipmentLevel.UNIT exists in code)", isa95: Unit, part: "62264-1 equipment hierarchy", mapping: NOT_REPRESENTED}
+  - {id: M-PROCESS-CELL, simulator: "not used", isa95: Process Cell / Production Line / Work Cell, part: "62264-1 equipment hierarchy", mapping: NOT_REPRESENTED}
+  - {id: M-EQUIPMENT-CLASS, simulator: "element class (reactor_vessel, centrifugal_pump, ...)", isa95: Equipment Class, part: "62264-2 equipment model", mapping: PARTIAL}
+  - {id: M-PHYSICAL-ASSET, simulator: "maintainable asset role on 10 hierarchy elements", isa95: Physical Asset, part: "62264-2 physical asset model", mapping: PARTIAL}
+  - {id: M-EQUIPMENT-CAPABILITY, simulator: "efficiency, available_* , capability, utility capacity", isa95: Equipment Capability, part: "62264-1/-2 capability model", mapping: PARTIAL}
+  - {id: M-UTILITY, simulator: "UT-* utility services", isa95: "no direct object (supply capability of a Work Center; utility as consumed material)", part: "62264-1/-2", mapping: MODELING_CHOICE}
+  - {id: M-MATERIAL-DEFINITION, simulator: "MAT-* materials", isa95: Material Definition, part: "62264-2 material model", mapping: DIRECT}
+  - {id: M-MATERIAL-CLASS, simulator: "material category (raw_material, finished_good)", isa95: Material Class, part: "62264-2 material model", mapping: PARTIAL}
+  - {id: M-MATERIAL-LOT, simulator: "material_lots (LOT-*)", isa95: Material Lot, part: "62264-2 material model", mapping: DIRECT}
+  - {id: M-PRODUCTION-LOT, simulator: "production_lots (PL-*)", isa95: "Material Lot (of the product)", part: "62264-2 material model", mapping: MODELING_CHOICE}
+  - {id: M-SUBLOT, simulator: "none", isa95: Material Sublot, part: "62264-2 material model", mapping: NOT_REPRESENTED}
+  - {id: M-SPARE-PART, simulator: "spare_parts (SP-*)", isa95: "Material Definition (MRO) + inventory", part: "62264-2 / -3 inventory", mapping: COMPOSITE}
+  - {id: M-PRODUCT-DEFINITION, simulator: "PROD-GH-M1 (production.yaml products, bill of materials)", isa95: Product Definition, part: "62264-1/-2 product definition model", mapping: PARTIAL}
+  - {id: M-PROCESS-SEGMENT, simulator: "none", isa95: "Process Segment / Operations Definition / Work Master", part: "62264-1/-2/-4", mapping: NOT_REPRESENTED}
+  - {id: M-PRODUCTION-ORDER, simulator: "production_orders (PO-2026-*)", isa95: "Production (Operations) Request / Job Order", part: "62264-2 / -4", mapping: MODELING_CHOICE}
+  - {id: M-PRODUCTION-SCHEDULE, simulator: "scheduling module: planned windows, priority, single-line sequence", isa95: "Production (Operations) Schedule", part: "62264-2", mapping: PARTIAL}
+  - {id: M-PRODUCTION-RESPONSE, simulator: "order produced/accepted/rejected kg, lots, status history", isa95: "Production (Operations) Response / Performance", part: "62264-2", mapping: DERIVED}
+  - {id: M-PRODUCTION-CAPABILITY, simulator: "nominal rate and line state; hidden capability", isa95: Production Capability, part: "62264-1/-2", mapping: PARTIAL}
+  - {id: M-MATERIAL-MOVEMENT, simulator: "MATERIAL_CONSUMED, MATERIAL_RECEIVED, INVENTORY_MOVED events; shipments", isa95: "Material consumed/produced actuals; inventory transfers", part: "62264-2 / -3 inventory operations", mapping: COMPOSITE}
+  - {id: M-PURCHASE-ORDER, simulator: "purchase_orders (PO-*)", isa95: "Level 4 procurement (outside the Level 3 object models)", part: "62264-1 functional hierarchy", mapping: PARTIAL}
+  - {id: M-SHIPMENT, simulator: "shipments (SH-*)", isa95: "Level 4 logistics / inventory operations", part: "62264-1 / -3", mapping: PARTIAL}
+  - {id: M-WORK-ORDER, simulator: "work_orders (WO-*) + MAINTENANCE_REQUESTED/COMPLETED events", isa95: "Maintenance Request / Work Order / Response", part: "62264-3 maintenance operations", mapping: COMPOSITE}
+  - {id: M-PERSON, simulator: "technicians (TECH-*) with skills and shifts", isa95: "Person (+ qualifications)", part: "62264-2 personnel model", mapping: PARTIAL}
+  - {id: M-PERSONNEL-CLASS, simulator: "none (skills are strings)", isa95: Personnel Class, part: "62264-2 personnel model", mapping: NOT_REPRESENTED}
+  - {id: M-OPERATOR, simulator: "actor string on operator actions", isa95: Person, part: "62264-2 personnel model", mapping: NOT_REPRESENTED}
+  - {id: M-QUALITY-SPEC, simulator: "quality.yaml product tests; materials.yaml specification", isa95: "QA Test Specification", part: "62264-2 / -3 quality operations", mapping: DIRECT}
+  - {id: M-QUALITY-SAMPLE, simulator: "quality_samples (QS-*) with results", isa95: "QA Test Request / Response (test result)", part: "62264-3 quality operations", mapping: COMPOSITE}
+  - {id: M-LOT-DISPOSITION, simulator: "production lot status RELEASED/QUARANTINE/REJECTED; material lot quality_status", isa95: Material Lot status, part: "62264-2 material model", mapping: DIRECT}
+  - {id: M-MEASUREMENT, simulator: "XMEAS / XMV bound to equipment properties", isa95: "Equipment property value (Level 1-2 data)", part: "62264-1 functional hierarchy (Levels 1-2)", mapping: DERIVED}
+  - {id: M-CONTROL-LOOP, simulator: "19 native loops (pid_loop control modules)", isa95: "Level 2 control (outside the Level 3 object models)", part: "62264-1 functional hierarchy", mapping: PARTIAL}
+  - {id: M-DISTURBANCE, simulator: "IDV 1-20", isa95: "none (process model disturbance)", part: "n/a", mapping: NOT_REPRESENTED}
+  - {id: M-ALARM, simulator: "alarms (ISA-18.2 style)", isa95: "none (ISA-18.2; Level 2)", part: "n/a", mapping: NOT_REPRESENTED}
+  - {id: M-EVENT, simulator: "event log (46 types)", isa95: "none as a generic object; transactions exchanged between levels", part: "62264-2 / -5", mapping: PARTIAL}
+  - {id: M-FAULT, simulator: "faults (benchmark)", isa95: "none (benchmark ground truth)", part: "n/a", mapping: NOT_REPRESENTED}

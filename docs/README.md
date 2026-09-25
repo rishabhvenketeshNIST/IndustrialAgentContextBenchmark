@@ -15,6 +15,15 @@ Documentation hierarchy, from overview to authority on semantics:
 README.md → MASTER_SIMULATOR_SPEC → CANONICAL_SIMULATOR_CONTRACT → subsystem and reference pages → source code and tests
 ```
 
+The **[canonical context model](CONTEXT_MODEL.md)** organises what the simulator produces for future
+information systems:
+
+* its [ISA-95 mapping](ISA95_SIMULATOR_MAPPING.md);
+* its [decisions](CONTEXT_MODEL_DECISIONS.md);
+* the [projection principles](CONTEXT_PROJECTION_PRINCIPLES.md) for UNS, historian and KG.
+
+It describes the simulator; it does not redefine it.
+
 The implementation is authoritative for behaviour; the contract is authoritative for documented
 meaning. Where the two disagree, the disagreement is a recorded defect or ambiguity
 ([contract audit](CANONICAL_CONTRACT_AUDIT.md)), never a silent reinterpretation.
@@ -62,6 +71,7 @@ meaning. Where the two disagree, the disagreement is a recorded defect or ambigu
 | 4 | TEP integration | [TEP overview](03_tep/tep_overview.md), [provenance](03_tep/tep_version_and_provenance.md), [integration](03_tep/tep_integration.md), [native control](03_tep/native_control.md), [shutdown](03_tep/safety_and_shutdown.md) |
 | 5 | Coupling | [coupling architecture](04_coupling/coupling_architecture.md), **[the TEP boundary contract](04_coupling/coupling_contract.md)**, [boundary variables](04_coupling/boundary_variables.md) |
 | 6 | State and events | **[canonical contract](CANONICAL_SIMULATOR_CONTRACT.md)**, [canonical state](05_state_and_events/canonical_state.md), [event model](05_state_and_events/event_model.md), [variable reference](05_state_and_events/variable_reference.md) |
+| 6b | Context model | [context model](CONTEXT_MODEL.md), [ISA-95 mapping](ISA95_SIMULATOR_MAPPING.md), [decisions](CONTEXT_MODEL_DECISIONS.md), [projection principles](CONTEXT_PROJECTION_PRINCIPLES.md) |
 | 7 | Variable graph | [graph model](07_variable_graph/graph_model.md), [edge types](07_variable_graph/edge_types.md) |
 | 8 | Faults and scenarios | [fault injection](06_scenarios/fault_injection.md), [taxonomy](06_scenarios/fault_taxonomy.md), [causal chains](06_scenarios/causal_chains.md) |
 | 9 | Worked demo | **[SCN-COOL-001 step by step](06_scenarios/scenario_examples/SCN-COOL-001.md)** |
