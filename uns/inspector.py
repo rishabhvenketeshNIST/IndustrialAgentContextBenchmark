@@ -70,8 +70,9 @@ class UNSInspector:
     """Subscribes to the UNS and keeps the live picture. Thread-safe; all queries return plain dicts."""
 
     def __init__(self, host: str = "127.0.0.1", port: int = 1883, root: str = DEFAULT_ROOT,
-                 client_id: str = "acme-uns-inspector") -> None:
+                 client_id: str = "acme-uns-inspector", links: Optional[Dict[str, str]] = None) -> None:
         self.host, self.port, self.root, self.client_id = host, int(port), root, client_id
+        self.links = dict(links or {})       # URLs of companion tools, shown as links only (no data)
         self._lock = threading.RLock()
         self._client: Optional[mqtt.Client] = None
         self.connected = False
@@ -201,6 +202,7 @@ class UNSInspector:
                 "latest_simulation_time": self.latest_time,
                 "scope_change": self.scope_change,
                 "counts": {"topics": len(self.messages), "events": len(self.events)},
+                "links": dict(self.links),
             }
 
     def tree(self) -> List[dict]:

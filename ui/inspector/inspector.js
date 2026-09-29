@@ -47,6 +47,9 @@ async function refreshStatus() {
   const t = s.latest_simulation_time;
   $("p-time").textContent = `t = ${hms(t)} (${t ?? "–"} s)`;
   $("p-scope").textContent = `Scope: ${s.operational_scope_id || "–"}`;
+  const sim = (s.links || {}).simulator_ui;
+  $("l-sim").hidden = !sim;
+  if (sim) $("l-sim").href = sim;
   const ch = s.scope_change;
   if (ch && ch.current === s.operational_scope_id && state.dismissedScope !== ch.current) {
     $("scope-new").textContent = ch.current;

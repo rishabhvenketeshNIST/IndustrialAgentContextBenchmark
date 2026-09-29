@@ -12,6 +12,7 @@
 | `set_speed(speed)` | `POST /api/simulation/speed` | `{speed: 0.01..5000}` | real-time multiplier |
 | `get_simulation_state()` | `GET /api/simulation` | — | status, running, speed, clock, duration, progress, manifest, shutdown, production summary, alarm counts, backends, scenario |
 | run manifest | `GET /api/simulation/manifest` | — | `SimulationEngine.run_manifest()` |
+| `operational_scope_id()` + UNS status | `GET /api/uns/status` | — | the opaque operational scope id of the current simulation (never the run id), the attached UNS publisher's connection (`enabled: false` without `run.py --uns`) and links to companion tools ([LOCAL_MANUFACTURING_STACK.md](../LOCAL_MANUFACTURING_STACK.md)) |
 
 ## Real-time runner
 
@@ -19,6 +20,12 @@
 caps them at `runner.max_steps_per_tick` (2000), and calls `engine.step(steps)` under the lock. It
 stops at completion. Speed never changes results; it only changes how fast they arrive. At very high
 speeds the requested rate may not be reached, and the run simply takes longer.
+
+**Observers.** `SimulatorService.add_observer(fn)` registers a read-only observer of the same
+simulation, such as the UNS publisher in `run.py --uns`. With an observer attached, the runner (and
+`step`/`run_until`) advance one second at a time and call every observer after each second; lifecycle
+and operator commands also notify observers. `engine.step(n)` is n one-second steps, so results are
+identical; only throughput at very high speeds is lower.
 
 ## Status values
 

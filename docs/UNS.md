@@ -57,6 +57,10 @@ second per step). The web UI and REST API are unchanged and independent of the U
 
 ## Visual inspection
 
+> To run the simulator web UI, the UNS and the inspector together, as one simulation, use
+> `python scripts/run_manufacturing_stack.py --start-broker`
+> ([LOCAL_MANUFACTURING_STACK.md](LOCAL_MANUFACTURING_STACK.md)).
+
 The **UNS inspector** is a small, read-only web view of the real UNS. It lets a researcher or developer
 see the ISA-95 structure and the live MQTT information while the simulator publishes.
 

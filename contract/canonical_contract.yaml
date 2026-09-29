@@ -313,6 +313,7 @@ api_routes:
   "POST /api/simulation/run_until": {class: control}
   "POST /api/simulation/speed": {class: control}
   "GET /api/simulation/manifest": {class: operational}
+  "GET /api/uns/status": {class: operational, note: "opaque operational_scope_id (never the run id) and UNS publisher connection; additive, see docs/LOCAL_MANUFACTURING_STACK.md"}
   "GET /api/enterprise": {class: operational}
   "GET /api/site": {class: operational}
   "GET /api/areas": {class: operational}

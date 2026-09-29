@@ -30,13 +30,16 @@ def main() -> int:
     ap.add_argument("--host", default="127.0.0.1", help="web view address")
     ap.add_argument("--port", type=int, default=8050, help="web view port")
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--simulator-url", default=None,
+                    help="simulator web UI URL, shown as a link only (the inspector never reads it)")
     args = ap.parse_args()
 
     import uvicorn
 
-    inspector = UNSInspector(args.mqtt_host, args.mqtt_port, args.root).start()
+    links = {"simulator_ui": args.simulator_url} if args.simulator_url else {}
+    inspector = UNSInspector(args.mqtt_host, args.mqtt_port, args.root, links=links).start()
     url = f"http://{args.host}:{args.port}/"
-    print(f"[inspector] reading mqtt://{args.mqtt_host}:{args.mqtt_port}/{args.root}/#  ->  {url}")
+    print(f"[inspector] reading mqtt://{args.mqtt_host}:{args.mqtt_port}/{args.root}/#  ->  {url}", flush=True)
     if not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     try:
