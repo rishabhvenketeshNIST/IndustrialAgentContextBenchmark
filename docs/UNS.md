@@ -20,7 +20,11 @@ The code is in [uns/](../uns/):
 - [publisher.py](../uns/publisher.py): simulator to MQTT;
 - [broker.py](../uns/broker.py) and [mosquitto.conf](../uns/mosquitto.conf): the local broker;
 - [scripts/run_uns.py](../scripts/run_uns.py): the runner;
-- [tests/test_uns.py](../tests/test_uns.py): the tests.
+- [inspector.py](../uns/inspector.py), [ui/inspector/](../ui/inspector/) and
+  [scripts/run_inspector.py](../scripts/run_inspector.py): the read-only visual inspector
+  ([Visual inspection](#visual-inspection));
+- [tests/test_uns.py](../tests/test_uns.py) and [tests/test_uns_inspector.py](../tests/test_uns_inspector.py):
+  the tests.
 
 ## Quick start
 
@@ -32,6 +36,8 @@ python scripts/run_uns.py --scenario SCN-COOL-001
 #    or both at once:  python scripts/run_uns.py --start-broker --speed 0
 # 3. any subscriber
 mosquitto_sub -h 127.0.0.1 -t 'uns/v1/#' -v
+#    or the visual inspector (read-only MQTT client with a web view):
+python scripts/run_inspector.py                    # opens http://127.0.0.1:8050
 ```
 
 **Security.** [uns/mosquitto.conf](../uns/mosquitto.conf) is a local-development and test
@@ -48,6 +54,97 @@ this benchmark ([UNS_OPERATING_MODEL.md](UNS_OPERATING_MODEL.md#broker-security)
 `pip install paho-mqtt` (listed in [requirements.txt](../requirements.txt)) is the only new Python
 dependency. The runner drives the simulator itself (`SimulatorService(start_runner=False)`, one simulated
 second per step). The web UI and REST API are unchanged and independent of the UNS.
+
+## Visual inspection
+
+The **UNS inspector** is a small, read-only web view of the real UNS. It lets a researcher or developer
+see the ISA-95 structure and the live MQTT information while the simulator publishes.
+
+```bash
+mosquitto -c uns/mosquitto.conf                                 # 1. broker (local-development config)
+python scripts/run_uns.py --scenario SCN-COOL-001 --speed 10    # 2. simulator -> UNS (another terminal)
+python scripts/run_inspector.py                                 # 3. inspector -> http://127.0.0.1:8050
+```
+
+Options:
+
+- `--mqtt-host` and `--mqtt-port` choose the broker (default `127.0.0.1:1883`);
+- `--port` sets the web view port (default 8050);
+- `--no-browser` stops it opening a browser;
+- `#<canonical id>` in the URL selects an entity, for example
+  `http://127.0.0.1:8050/#work_unit:WU-CWP-101A`.
+
+**It is an ordinary MQTT client.** The inspector:
+
+- subscribes to `uns/v1/#` and shows only what the broker delivers;
+- imports nothing from `simulator/` or `api/`, calls no simulator or benchmark route, and never
+  publishes;
+- adds nothing to a payload.
+
+Hidden information cannot appear in it, because it never reaches MQTT.
+[tests/test_uns_inspector.py](../tests/test_uns_inspector.py) checks this: its imports, the payloads it
+shows against those received, and a search for hidden keys and ids.
+
+**What it shows:**
+
+- **Header.**
+  - The inspector's MQTT connection (CONNECTED or DISCONNECTED, with host and port).
+  - The retained publisher status.
+  - The retained **lifecycle** (READY, RUNNING, PAUSED, COMPLETED).
+  - `t`, the latest `simulation_time` received.
+  - The current **operational scope** (`OS-…`), taken from the retained lifecycle.
+
+  When the scope changes, a *NEW SIMULATION SCOPE* banner shows the new and previous ids. It is
+  detected from retained state, so it also works for an inspector that never saw `SIMULATION_RESET`.
+- **ISA-95 tree.** The tree is built from the topic paths and `meta` payloads actually received, so it
+  is the simulator hierarchy exactly as the UNS publishes it: Enterprise › Site › Area ›
+  {Production Unit › Equipment Module › Control Module | Work Center › Work Unit | Storage Zone ›
+  Storage Unit}, plus utilities, materials and products. Nothing is hard-coded, and no second
+  hierarchy exists. The badge on a node counts the records (orders, lots, samples, alarms, work orders)
+  published under it.
+- **Selected entity.**
+  - Its canonical `entity_id`, `entity_type` and ISA-95 concept (from `meta.isa95`), with parent and
+    children.
+  - Its **ISA-95 position**: the lineage from the enterprise down, clickable.
+  - **Current retained state**, marked as such. It is the latest message of the retained state topic,
+    with its `simulation_time` and scope, and it is not history.
+  - **Live measurements**: variable, value, unit and `simulation_time`, with a small sparkline of the
+    samples received since the inspector connected (current scope only).
+  - **Recent operational events** for the entity and everything below it: `event_id` (`OE-`/`LC-`),
+    type, simulation time, operational payload, and causation and correlation ids as the UNS carries
+    them.
+  - The **records** under the entity, with their current state.
+  - Its configuration, from `meta`.
+  - Every **MQTT topic** received for it. Each expands to the raw MQTT message: topic, QoS, retain
+    flag, and the payload byte-for-byte as received.
+
+**How to read the times:**
+
+- `simulation_time` (and `simulation_timestamp`) is manufacturing time. The simulator clock is the only
+  timeline the inspector uses: for the header, the measurement tables, the sparklines and the events.
+- `observed_at` is shown only in a column labelled *observed_at (transport)*. It is the wall-clock time
+  at which the publisher sent that copy. It is not manufacturing time.
+
+**Retained versus live:**
+
+- *Retained* state is the latest value of a retained topic. A new or reconnected inspector receives it
+  immediately from the broker. The raw-message retain flag says whether a message came from the
+  broker's retained store (`true`) or live (`false`).
+- Events are not retained. The inspector lists only events that arrived while it was connected, and it
+  never reconstructs or replays older ones.
+
+**Reconnects.** If the broker goes away, the header shows *MQTT: DISCONNECTED*. The client reconnects
+automatically, resubscribes, and the retained state returns. Past events are not fabricated.
+
+**What it is not:**
+
+- It is not a historian. It keeps only the latest message per topic, the last 500 events and the last
+  120 samples per measurement, in memory, for the current scope. Nothing is stored, and there is no
+  query, replay or retention.
+- It is not an i3X layer or an operator HMI. Its web routes are GET-only, and it cannot send anything to
+  the broker or the simulator.
+- Its web view is served on the loopback interface, without authentication (local development only;
+  see *Security* above).
 
 ## What the UNS is
 

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UNS Inspector</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/inspector/inspector.css">
+</head>
+<body class="insp">
+<header class="insp-top">
+  <div class="insp-brand"><b>ISA-95 MQTT UNS Inspector</b><span>read-only MQTT client · shows only what the broker delivers</span></div>
+  <div class="insp-pills">
+    <span class="pill" id="p-mqtt" title="MQTT connection of this inspector">MQTT: …</span>
+    <span class="pill" id="p-pub" title="Retained publisher status (uns/publisher)">Publisher: …</span>
+    <span class="pill" id="p-life" title="Retained lifecycle topic">Lifecycle: …</span>
+    <span class="pill mono" id="p-time" title="latest simulation_time received in the current scope (manufacturing time, not wall-clock)">t = …</span>
+    <span class="pill mono" id="p-scope" title="operational_scope_id from the retained lifecycle">Scope: …</span>
+  </div>
+</header>
+<div class="insp-banner" id="scope-banner" hidden>
+  <b>NEW SIMULATION SCOPE</b> <span class="mono" id="scope-new"></span>
+  <span class="muted">(previous <span class="mono" id="scope-old"></span>; detected from the retained lifecycle)</span>
+  <button id="scope-dismiss" title="Hide">✕</button>
+</div>
+<main class="insp-main">
+  <aside class="insp-tree">
+    <div class="insp-h">ISA-95 namespace <span class="muted" id="tree-count"></span></div>
+    <input id="tree-filter" type="search" placeholder="filter (id, name, type)">
+    <div id="tree" class="tree"></div>
+    <div class="insp-h">Recent operational events <span class="muted">(current scope, all entities)</span></div>
+    <div id="all-events" class="events"></div>
+  </aside>
+  <section class="insp-detail" id="detail">
+    <p class="muted">Select an entity in the ISA-95 tree.</p>
+  </section>
+</main>
+<footer class="insp-foot muted" id="foot"></footer>
+<script src="/inspector/inspector.js"></script>
+</body>
+</html>

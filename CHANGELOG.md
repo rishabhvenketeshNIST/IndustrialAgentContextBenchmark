@@ -4,6 +4,32 @@ Notable changes to this repository. The simulator version is `simulator.__versio
 contract version is `contract.version` in `contract/canonical_contract.yaml`
 (see [contract §23](docs/CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)).
 
+## [Unreleased]: UNS visual inspector
+
+**No simulator, API, UNS publisher or payload change.**
+
+### Added
+
+- `uns/inspector.py`, `ui/inspector/`, `scripts/run_inspector.py`: a read-only visual inspector for the
+  UNS. It is an ordinary MQTT client (it subscribes to `uns/v1/#` and imports nothing from `simulator/`
+  or `api/`) with a small web view:
+  - the ISA-95 tree built from the received topics and `meta`;
+  - the selected entity's lineage, current retained state, live measurements with sparklines, recent
+    operational events, records, and raw MQTT messages;
+  - MQTT connection, lifecycle, latest simulation time and operational scope, with a banner when a new
+    scope starts.
+
+  It keeps only a live in-memory view; it is not a historian.
+- `tests/test_uns_inspector.py`: 11 tests against a real broker and the real publisher:
+  - no simulator imports;
+  - the tree equals the hierarchy;
+  - retained state, measurements, events, lifecycle and scope;
+  - scope change on reset and not on publisher or broker restart;
+  - reconnect;
+  - no hidden fields;
+  - raw payloads equal to those received.
+- `docs/UNS.md`, "Visual inspection".
+
 ## [Unreleased]: UNS hardening (payload schema acme-uns/2, context model 0.3.0)
 
 **No simulator, configuration, scenario or REST API change.** Resolves the three open points of the
