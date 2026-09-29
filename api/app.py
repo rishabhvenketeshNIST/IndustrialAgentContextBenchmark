@@ -132,6 +132,19 @@ def create_app(service: Optional[SimulatorService] = None, autoload: Optional[st
     def set_speed(req: SpeedRequest):
         return svc.set_speed(req.speed)
 
+    # ---------------------------------------------------------------- UNS integration (operational)
+    app.state.uns = None      # an attached uns.publisher.UNSPublisher (run.py --uns), else None
+    app.state.links = {}      # URLs of companion local tools, e.g. {"uns_inspector": "http://..."}
+
+    @app.get("/api/uns/status")
+    def uns_status():
+        """Which operational scope this server simulates and whether it is published to the MQTT UNS.
+        The scope id is the opaque operational one (api/operational.py), never the run id."""
+        pub = app.state.uns
+        return {"operational_scope_id": svc.operational_scope_id(),
+                "uns": dict(pub.status(), enabled=True) if pub is not None else {"enabled": False},
+                "links": dict(app.state.links)}
+
     @app.get("/api/simulation/manifest")
     def manifest():
         return svc.get_manifest()

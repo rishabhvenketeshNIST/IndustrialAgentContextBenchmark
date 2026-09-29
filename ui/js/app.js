@@ -197,6 +197,38 @@ function renderTop(snap) {
   $("kpis").innerHTML = kpis.map(([k, v, extra]) => `<div class="kpi"><div class="k">${esc(k)} ${extra}</div><div class="v">${v}</div></div>`).join("");
 }
 
+// ------------------------------------------------------------------------------ UNS integration
+// Transport status and scope of this server's simulation (GET /api/uns/status). The UI stays the
+// simulator's own view; the UNS inspector is a separate MQTT client, reached by a link only.
+const CANONICAL_TYPE = { Enterprise: "enterprise", Site: "site", Area: "area", ProductionUnit: "production_unit",
+  EquipmentModule: "equipment_module", ControlModule: "control_module", WorkCenter: "work_center",
+  WorkUnit: "work_unit", StorageZone: "storage_zone", StorageUnit: "storage_unit" };
+
+function findNode(n, id) {
+  if (!n) return null;
+  if (n.id === id) return n;
+  for (const c of n.children || []) { const f = findNode(c, id); if (f) return f; }
+  return null;
+}
+
+async function pollUns() {
+  let u;
+  try { u = await api("/api/uns/status"); } catch (e) { return; }
+  const m = u.uns || {};
+  if (!m.enabled) badge("badge-uns", "UNS off", "", "○");
+  else badge("badge-uns", `UNS ${m.connected ? "CONNECTED" : "DISCONNECTED"} · ${m.host}:${m.port}`,
+    m.connected ? "good" : "critical", m.connected ? "●" : "✕");
+  $("badge-scope").textContent = u.operational_scope_id || "scope –";
+  $("badge-scope").title = `Operational scope ${u.operational_scope_id || "–"}: the same id is shown by the UNS inspector`;
+  const link = $("link-inspector"), base = (u.links || {}).uns_inspector;
+  link.hidden = !base;
+  if (base) {
+    const node = findNode(ui.snap && ui.snap.hierarchy, ui.selected);
+    const type = node && CANONICAL_TYPE[node.level];
+    link.href = base + (type ? `#${type}:${node.id}` : "");
+  }
+}
+
 function badge(id, text, cls, icon) {
   const b = $(id);
   b.className = `badge st-${cls}`;
@@ -441,6 +473,8 @@ async function loadScenarioList() {
 async function init() {
   ui.schematic = new Schematic($("schematic"), select, addTrend);
   bindControls();
+  pollUns();                           // UNS badge and scope first: they do not wait for the rest
+  setInterval(pollUns, 2000);
   await poll(true);
   if (!ui.snap?.hierarchy) {           // no simulation yet: create the demo
     await post("/api/simulation/create", { scenario_id: "SCN-COOL-001" });

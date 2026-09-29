@@ -4,6 +4,51 @@ Notable changes to this repository. The simulator version is `simulator.__versio
 contract version is `contract.version` in `contract/canonical_contract.yaml`
 (see [contract §23](docs/CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)).
 
+## [Unreleased]: integrated local manufacturing stack
+
+**No simulator physics, scenario, UNS payload or event change.** The simulator web UI, the UNS publisher
+and the UNS inspector now run as one local stack around one simulation.
+
+### Added
+
+- **`scripts/run_manufacturing_stack.py`:** starts the broker (`--start-broker`, or uses an existing
+  one), the simulator server with its UNS publisher, and the inspector.
+  - It waits for readiness, prints the URLs and the shared operational scope, and stops everything on
+    Ctrl-C.
+  - It creates no simulation itself.
+- **`run.py --uns [--mqtt-host --mqtt-port --inspector-url] [--speed]`:** the web server's own
+  simulation is also published to the UNS, giving one engine for UI, API and UNS.
+- **`SimulatorService.add_observer`:** read-only observers of the service's simulation.
+  - With observers attached, the runner, step and run-until advance one second at a time and notify
+    after each second; lifecycle and operator commands also notify.
+  - The results are identical, because `engine.step(n)` is n one-second steps.
+- **`UNSPublisher.attach()` and `status()`:** integrated mode. The publisher follows the host service
+  and never steps a simulation itself.
+- **`GET /api/uns/status`:** an operational, additive route, declared in the contract. It returns the
+  opaque `operational_scope_id` (never the run id), the UNS publisher connection, and links.
+- **Simulator UI:** a UNS badge, the operational scope, and an *UNS Inspector ↗* link that opens the
+  inspector on the selected entity.
+- **Inspector:** `--simulator-url` adds a *Simulator UI ↗* link (a link only; the inspector still reads
+  MQTT only). Its title is now *ISA-95 MQTT Unified Namespace*.
+- **`tests/test_manufacturing_stack.py`:** 13 tests:
+  - one simulation and one scope in UI, UNS and inspector;
+  - start, pause, resume and reset propagation;
+  - publisher and broker restarts;
+  - state and measurement correspondence;
+  - no hidden information;
+  - the full demo through the stack, unchanged, with the standalone message counts;
+  - launcher start and Ctrl-C cleanup, and no orphans when the launcher is killed (Windows job
+    object);
+  - standalone modes;
+  - the busy-port check.
+- **`docs/LOCAL_MANUFACTURING_STACK.md`.**
+
+### Changed
+
+- **`run.py` port check:** it now checks that its web port is free before building the simulation, and
+  exits with code 3 and a clear message. Before, it loaded the scenario and printed the URLs before
+  uvicorn failed to bind.
+
 ## [Unreleased]: UNS visual inspector
 
 **No simulator, API, UNS publisher or payload change.**

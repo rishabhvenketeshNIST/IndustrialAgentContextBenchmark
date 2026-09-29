@@ -225,7 +225,23 @@ class UNSPublisher:
         self._found = found
         self._stale = set(found)
 
+    def attach(self) -> "UNSPublisher":
+        """Integrated mode: connect and follow the host service's own simulation. The publisher is
+        registered as an observer (SimulatorService.add_observer), so it synchronises after every
+        simulated second and every lifecycle command of the simulation the web UI/API serves; it never
+        creates or steps a simulation itself."""
+        self.connect()
+        self.service.add_observer(self.sync)
+        self.sync()
+        return self
+
+    def status(self) -> dict:
+        """Transport status for operator displays (no manufacturing content)."""
+        return {"connected": self.connected, "host": self.host, "port": self.port, "root": self.root,
+                "client_id": self.client_id, "publish_errors": self.publish_errors}
+
     def close(self) -> None:
+        self.service.remove_observer(self.sync)
         if self._client is None:
             return
         if self.connected:

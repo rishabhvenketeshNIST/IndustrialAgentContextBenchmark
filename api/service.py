@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from simulator.common import SCENARIO_DIR, to_jsonable
 from simulator.enterprise import EnterpriseView
@@ -59,7 +59,7 @@ class Runner(threading.Thread):
                         eng = self.svc.engine
                         if eng is not None and not eng.completed:
                             try:
-                                eng.step(n)
+                                self.svc._advance(eng, n)
                             except Exception:  # pragma: no cover - surfaced in status
                                 log.exception("simulation step failed")
                                 self.svc.error = "simulation step failed - see server log"
@@ -86,6 +86,7 @@ class SimulatorService:
         self.max_steps_per_tick = 2000
         self.error: Optional[str] = None
         self._ops: Optional[operational.OperationalEventView] = None
+        self._observers: List[Callable[[], None]] = []
         self.runner = Runner(self)
         if start_runner:
             self.runner.start()
@@ -103,6 +104,42 @@ class SimulatorService:
     def _view(self, truth: bool) -> EnterpriseView:
         e = self._eng()
         return self.view if truth else EnterpriseView(e, lambda eid: operational.entity_status(e.state, eid))
+
+    # ------------------------------------------------------------------ observers
+    def add_observer(self, fn: Callable[[], None]) -> None:
+        """Register a read-only observer of this service's simulation (e.g. the UNS publisher).
+
+        It is called, under the service lock, after every simulated second and after every lifecycle
+        or operator command, so it sees the same engine the API serves, second by second. Observers
+        must not change the simulation."""
+        with self.lock:
+            self._observers.append(fn)
+
+    def remove_observer(self, fn: Callable[[], None]) -> None:
+        with self.lock:
+            if fn in self._observers:
+                self._observers.remove(fn)
+
+    def _notify(self) -> None:
+        for fn in list(self._observers):
+            try:
+                fn()
+            except Exception:  # an observer must never break the simulation
+                log.exception("simulation observer failed")
+
+    def _advance(self, e: SimulationEngine, n: int) -> int:
+        """Advance n simulated seconds. With observers attached, one second at a time with a
+        notification after each: SimulationEngine.step(n) is n one-second steps, so the simulation is
+        identical either way."""
+        if not self._observers:
+            return e.step(n)
+        done = 0
+        for _ in range(n):
+            if e.completed:
+                break
+            done += e.step(1)
+            self._notify()
+        return done
 
     def _event_view(self) -> operational.OperationalEventView:
         bus = self._eng().bus
@@ -131,6 +168,7 @@ class SimulatorService:
             self.speed = float(rcfg.get("default_speed", self.speed))
             self.max_steps_per_tick = int(rcfg.get("max_steps_per_tick", 2000))
             log.info("created simulation %s", self.engine.state.run["run_id"])
+            self._notify()
             return self.get_simulation_state()
 
     def start_simulation(self) -> dict:
@@ -141,6 +179,7 @@ class SimulatorService:
             e.start()
             self.runner._last = time.perf_counter()
             self.runner.running = True
+            self._notify()
             return self.get_simulation_state()
 
     def pause_simulation(self) -> dict:
@@ -150,6 +189,7 @@ class SimulatorService:
                 self.runner.running = False
                 e.status = "PAUSED"
                 e.bus.publish(EventType.SIMULATION_PAUSED, "simulation", "SITE-TE", {"time_s": e.clock.time_s})
+                self._notify()
             return self.get_simulation_state()
 
     def resume_simulation(self) -> dict:
@@ -165,6 +205,7 @@ class SimulatorService:
                 e.status = "RUNNING"
                 self.runner._last = time.perf_counter()
                 self.runner.running = True
+                self._notify()
             return self.get_simulation_state()
 
     def reset_simulation(self, duration_seconds: Optional[int] = None) -> dict:
@@ -180,6 +221,7 @@ class SimulatorService:
             self.duration_override = dur
             self.engine.bus.publish(EventType.SIMULATION_RESET, "simulation", "SITE-TE",
                                     {"scenario_id": self.scenario["id"]})
+            self._notify()
             return self.get_simulation_state()
 
     def step_simulation(self, n: int = 1) -> dict:
@@ -188,18 +230,22 @@ class SimulatorService:
         with self.lock:
             self.runner.running = False
             e = self._eng()
-            e.step(int(n))
+            self._advance(e, int(n))
             if not e.completed:
                 e.status = "PAUSED"
+            self._notify()
             return self.get_simulation_state()
 
     def run_until(self, time_s: int) -> dict:
         with self.lock:
             self.runner.running = False
             e = self._eng()
-            e.run_until(int(time_s))
+            t_end = min(int(time_s), e.duration_s)
+            if t_end > e.clock.time_s:                  # same as SimulationEngine.run_until
+                self._advance(e, t_end - e.clock.time_s)
             if not e.completed:
                 e.status = "PAUSED"
+            self._notify()
             return self.get_simulation_state()
 
     def set_speed(self, speed: float) -> dict:
@@ -453,7 +499,14 @@ class SimulatorService:
     # ------------------------------------------------------------------ operator actions
     def operator_action(self, action: str, params: Dict[str, Any], actor: str = "operator") -> Any:
         with self.lock:
-            return to_jsonable(self._eng().operator.execute(action, params, actor))
+            out = to_jsonable(self._eng().operator.execute(action, params, actor))
+            self._notify()
+            return out
+
+    def operational_scope_id(self) -> Optional[str]:
+        """The opaque operational scope id of the current simulation (api/operational.py), or None."""
+        with self.lock:
+            return operational.operational_scope_id(self.engine) if self.engine is not None else None
 
     def operator_actions(self) -> List[str]:
         with self.lock:

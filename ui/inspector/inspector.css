@@ -18,6 +18,9 @@ body.insp { margin: 0; background: var(--page); color: var(--text-primary); font
   background: var(--selection); border-bottom: 1px solid var(--accent); }
 .insp-banner button { margin-left: auto; }
 .insp-banner[hidden] { display: none; }
+.pill.link { color: var(--accent); text-decoration: none; }
+.pill.link:hover { background: var(--surface-3); }
+.pill[hidden] { display: none; }
 /* the simulator stylesheet gives <main> three columns and two rows; the inspector has two panes */
 .insp-main { display: grid; grid-template-columns: minmax(260px, 380px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
   gap: 0; padding: 0; min-height: 0; }
