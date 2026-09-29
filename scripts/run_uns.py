@@ -6,8 +6,9 @@
 
 The simulator is stepped one simulated second at a time and the UNS publisher synchronises after every
 step (docs/UNS_OPERATING_MODEL.md). ``--speed`` paces simulated seconds per wall-clock second (0 = as
-fast as possible); pacing never changes what is published, only when. ``--start-broker`` runs a local
-Eclipse Mosquitto from uns/mosquitto.conf for the duration of the run.
+fast as possible); pacing changes when messages are sent and their wall-clock ``observed_at``, never
+their manufacturing content or simulation time. ``--start-broker`` runs a local Eclipse Mosquitto from
+uns/mosquitto.conf (a local-development configuration, not a production one) for the run.
 """
 from __future__ import annotations
 
@@ -51,11 +52,13 @@ def main() -> int:
         wall0 = time.monotonic()
         while not eng.completed:
             eng.step(1)
-            pub.sync()
             if args.speed > 0:
+                # pace before publishing: observed_at then follows the pacing schedule, not the time the
+                # step took to compute (compute time could depend on hidden scenario content)
                 lag = eng.clock.time_s / args.speed - (time.monotonic() - wall0)
                 if lag > 0:
                     time.sleep(lag)
+            pub.sync()
             if eng.clock.time_s % 600 == 0:
                 print(f"[uns] t = {eng.clock.time_s} s  messages {pub.sent}")
         pub.sync()

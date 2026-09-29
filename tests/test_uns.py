@@ -13,14 +13,14 @@ import paho.mqtt.client as mqtt
 import pytest
 import yaml
 
-from api.operational import hidden_properties
+from api.operational import hidden_properties, operational_scope_id
 from api.service import SimulatorService
 from simulator.common import iso
 from simulator.scenarios import ScenarioStore
 from uns import DEFAULT_ROOT, SCHEMA
-from uns.broker import LocalBroker, find_mosquitto
-from uns.namespace import CONTEXT_MODEL, Namespace, escape, unescape
-from uns.publisher import RECORD_CONTINUOUS, UNSPublisher
+from uns.broker import CONF, LocalBroker, find_mosquitto
+from uns.namespace import CONTEXT_MODEL, ROOT_DIR, Namespace, escape, unescape
+from uns.publisher import RECORD_CONTINUOUS, UNSPublisher, content_of, encode, wall_clock
 
 from .conftest import requires_fortran
 
@@ -29,6 +29,7 @@ CTX = yaml.safe_load(CONTEXT_MODEL.read_text(encoding="utf-8"))
 PERIOD = 10
 T_FAULT = 3600
 T_FIRST_SYMPTOM = 4833          # 01:20:33, vibration alarm VAH-CWP101A
+SCOPE_RE = re.compile(r"OS-[0-9a-f]{32}")
 
 
 # ---------------------------------------------------------------------------- helpers
@@ -107,6 +108,33 @@ def per_topic(msgs):
     return by
 
 
+def scopes(msgs):
+    """The operational scope ids carried by a list of messages."""
+    return {json.loads(p).get("operational_scope_id") for _, p, _, _ in msgs if p} - {None}
+
+
+def publication(p):
+    """A payload without observed_at: everything a republication must leave unchanged, including the
+    simulation time."""
+    return {k: v for k, v in json.loads(p).items() if k != "observed_at"}
+
+
+def normalized(msgs):
+    """Messages of an independent simulation scope, made comparable byte for byte with another scope:
+    the opaque scope id and the wall-clock observed_at differ between scopes by design."""
+    out = []
+    for t, p, r, q in msgs:
+        if p:
+            d = json.loads(p)
+            if "operational_scope_id" in d:
+                d["operational_scope_id"] = "<scope>"
+            if "observed_at" in d:
+                d["observed_at"] = "<observed>"
+            p = encode(d)
+        out.append((t, p, r, q))
+    return out
+
+
 def floats_only_differ(a, b):
     """True when a and b have the same structure and equal non-float values."""
     if isinstance(a, float) and isinstance(b, float):
@@ -132,10 +160,12 @@ def broker():
 def stream(broker):
     """SCN-COOL-001 published for 1200 s through a real broker, recorded by a subscriber."""
     col = Collector(broker.port, "test-stream").start()
+    wall0 = wall_clock()
     svc, pub = run(broker.port, until=1200)
     msgs = col.quiet()
+    wall1 = wall_clock()
     col.stop()
-    yield {"svc": svc, "pub": pub, "msgs": msgs, "port": broker.port}
+    yield {"svc": svc, "pub": pub, "msgs": msgs, "port": broker.port, "wall": (wall0, wall1)}
     pub.close()
     svc.shutdown()
 
@@ -217,7 +247,8 @@ def test_state_measurement_and_event_channels_have_distinct_semantics(stream):
         if kind == "publisher":                 # transport status of the publisher: no manufacturing time
             assert topic.endswith("/uns/publisher") and set(d) == {"kind", "schema", "status"}
             continue
-        assert d["timestamp"] == iso(start + timedelta(seconds=d["simulation_time"]))   # simulator time
+        assert d["simulation_timestamp"] == iso(start + timedelta(seconds=d["simulation_time"]))  # simulator time
+        assert SCOPE_RE.fullmatch(d["operational_scope_id"]) and "timestamp" not in d
         if kind == "measurement":
             assert "/measurement/" in topic and qos == 0
             assert d["simulation_time"] % PERIOD == 0
@@ -294,13 +325,20 @@ def test_late_subscriber_recovers_retained_state_and_no_events(stream):
     assert got == stream["pub"].retained                                  # exactly the current retained state
     kinds = {json.loads(p)["kind"] for p in got.values()}
     assert {"meta", "state", "measurement", "lifecycle", "publisher"} <= kinds
+    assert scopes(msgs) == {operational_scope_id(stream["svc"].engine)}  # one scope, named in every payload
+    last_live = {t: p for t, p, _, _ in stream["msgs"]}
+    assert all(p == last_live[t] for t, p in got.items())                 # retained = last live publication,
+                                                                         # simulation time included
 
 
 # ---------------------------------------------------------------------------- reconnects
 @requires_mosquitto
-def test_publisher_reconnect_republishes_identical_state_only():
+def test_publisher_restart_keeps_scope_content_and_simulation_time():
+    """A new publisher instance attached to the same simulation scope (here between two sampling ticks)
+    republishes the current state with the same operational scope id, the same content and the same
+    simulation time; only observed_at changes. No event is replayed and nothing is deleted."""
     with LocalBroker() as b:
-        svc, pub = run(b.port, until=300)
+        svc, pub = run(b.port, until=305)
         before = dict(pub.retained)
         col = Collector(b.port, "t-prec").start()
         col.quiet()
@@ -311,15 +349,16 @@ def test_publisher_reconnect_republishes_identical_state_only():
         pub2.flush()
         after = col.quiet()
         col.stop()
-        def content(p):              # a new publisher instance stamps states with the time it observed them
-            d = json.loads(p)
-            return {k: v for k, v in d.items() if k not in ("simulation_time", "timestamp")}
         status = pub2._status_topic
-        assert {t: content(p) for t, p in before.items() if t != status} == \
-            {t: content(p) for t, p in pub2.retained.items() if t != status}
-        new = {t: p for t, p, r, q in after if t != status and p}
-        assert not any("/event/" in t for t in new)          # a reconnect publishes no events
-        assert all(content(before[t]) == content(p) for t, p in new.items())   # only duplicates of state
+        assert {t: publication(p) for t, p in before.items() if t != status} == \
+            {t: publication(p) for t, p in pub2.retained.items() if t != status}
+        new = {t: p for t, p, r, q in after if t != status}
+        assert all(new.values())                             # nothing deleted, not even the last samples
+        assert not any("/event/" in t for t in new)          # a restart publishes no events
+        assert all(publication(before[t]) == publication(p) for t, p in new.items())   # duplicates only
+        scope = operational_scope_id(svc.engine)
+        assert scopes(after) == {scope} and scopes([(t, p, 1, 1) for t, p in before.items()]) == {scope}
+        assert any(json.loads(p)["simulation_time"] < 305 for p in new.values())   # not re-dated
         pub2.close()
         svc.shutdown()
 
@@ -343,6 +382,7 @@ def test_subscriber_reconnect_with_persistent_session_receives_queued_events():
         got = [d["event_id"] for _, d, _, _ in loads(msgs, "event")]
         expected = [e["event_id"] for e in svc.get_events(limit=20000)]
         assert got == expected                             # nothing lost, no gap, no duplicates here
+        assert scopes(msgs) == {operational_scope_id(svc.engine)}   # one scope across both sessions
         pub.close()
         svc.shutdown()
 
@@ -352,6 +392,7 @@ def test_broker_restart_recovers_retained_state_and_buffered_events():
     b = LocalBroker().start()
     try:
         svc, pub = run(b.port, until=880)
+        before = {t: json.loads(p) for t, p in pub.retained.items()}
         b.stop()
         eng = svc.engine
         while eng.clock.time_s < 1000:                    # events while the broker is down are buffered
@@ -375,6 +416,15 @@ def test_broker_restart_recovers_retained_state_and_buffered_events():
         events = [d["event_id"] for _, d, _, _ in loads(msgs, "event")]
         outage = [e["event_id"] for e in svc.get_events(since=881, limit=20000)]
         assert outage and events[:len(outage)] == outage   # buffered events delivered in order
+        assert scopes(msgs) == {operational_scope_id(svc.engine)}   # a broker restart is not a new scope
+        # states unchanged during the outage (measurements are new samples every tick and move on)
+        kept = [t for t, d in before.items() if t in retained and d["kind"] in ("state", "meta", "lifecycle")
+                and content_of(d) == content_of(json.loads(retained[t]))]
+        assert kept
+        for t in kept:                                     # republished, not re-dated
+            after = json.loads(retained[t])
+            assert after["simulation_time"] == before[t]["simulation_time"]
+            assert after["observed_at"] > before[t]["observed_at"]
         pub.close()
         svc.shutdown()
     finally:
@@ -402,6 +452,10 @@ def test_lifecycle_and_reset_begin_a_clean_identity_scope():
         assert "SIMULATION_PAUSED" in types and "SIMULATION_RESUMED" in types
         reset = types.index("SIMULATION_RESET")
         assert events[reset]["event_id"] == "LC-0000001" and events[reset]["payload"] == {}
+        old, new = events[0]["operational_scope_id"], events[reset]["operational_scope_id"]
+        assert events[0]["event_type"] == "SIMULATION_STARTED" and old != new == operational_scope_id(svc.engine)
+        assert {e["operational_scope_id"] for e in events[:reset]} == {old}
+        assert {e["operational_scope_id"] for e in events[reset:]} == {new}
         # retained state of the old scope that does not exist in the new one is deleted
         deleted = {t for t, p, r, q in msgs if not p}
         assert any("quality_sample:QS-00001" in t for t in deleted)
@@ -412,6 +466,7 @@ def test_lifecycle_and_reset_begin_a_clean_identity_scope():
         after = late.quiet()
         late.stop()
         assert not any("QS-00001" in t for t, *_ in after)
+        assert scopes(after) == {new}                      # the retained tree holds the new scope only
         pub.close()
         svc.shutdown()
 
@@ -424,7 +479,7 @@ def test_publication_is_deterministic():
         with LocalBroker() as b:
             col = Collector(b.port, "t-det").start()
             svc, pub = run(b.port, until=600)
-            streams.append(per_topic(col.quiet()))
+            streams.append(per_topic(normalized(col.quiet())))
             col.stop()
             pub.close()
             svc.shutdown()
@@ -442,16 +497,21 @@ def test_hidden_fault_is_not_disclosed_before_the_first_symptom():
     faulted = ScenarioStore().load("SCN-COOL-001")
     healthy = copy.deepcopy(faulted)
     healthy["faults"] = []
-    streams = []
+    streams, ids = [], []
     for scenario in (faulted, healthy):
         with LocalBroker() as b:
             col = Collector(b.port, "t-nd").start()
             svc, pub = run(b.port, scenario=scenario, until=T_FIRST_SYMPTOM - 1)
-            streams.append(per_topic(col.quiet(timeout=120)))
+            raw = col.quiet(timeout=120)
+            ids.append(scopes(raw))
+            streams.append(per_topic(normalized(raw)))
             col.stop()
             pub.close()
             svc.shutdown()
     a, b = streams
+    # one opaque scope id per run, constant across fault onset, different between the two scopes; it
+    # is masked in the comparison below, so everything else must be identical as before
+    assert all(len(i) == 1 and SCOPE_RE.fullmatch(next(iter(i))) for i in ids) and ids[0] != ids[1]
     assert a.keys() == b.keys()
     differing = set()
 
@@ -460,7 +520,7 @@ def test_hidden_fault_is_not_disclosed_before_the_first_symptom():
     def discrete(x):
         if isinstance(x, dict):
             return {k: "#" if k in continuous else discrete(v) for k, v in x.items()
-                    if k not in ("simulation_time", "timestamp")}
+                    if k not in ("simulation_time", "simulation_timestamp")}
         if isinstance(x, list):
             return [discrete(v) for v in x]
         return "#" if isinstance(x, float) else x
@@ -531,3 +591,130 @@ def test_full_demo_over_mqtt_leaves_the_simulation_unchanged(demo_run):
         assert "F-COOL-001" not in text and "SCN-COOL-001" not in text and "DEGRADED" not in text
         pub.close()
         svc.shutdown()
+
+
+# ---------------------------------------------------------------------------- operational scope (R-01)
+def test_operational_scope_id_belongs_to_the_simulation_scope():
+    """Same scope -> same id; reset or a new simulation -> a new id. Reset keeps the run id, so an id
+    that changes on reset is not derived from the run id."""
+    svc = SimulatorService(start_runner=False)
+    try:
+        svc.create_simulation("SCN-COOL-001")
+        first = operational_scope_id(svc.engine)
+        assert SCOPE_RE.fullmatch(first)
+        svc.engine.step(30)
+        assert operational_scope_id(svc.engine) == first               # stable within the scope
+        run_id = svc.engine.state.run["run_id"]
+        svc.reset_simulation()
+        second = operational_scope_id(svc.engine)
+        assert second != first and svc.engine.state.run["run_id"] == run_id
+        svc.create_simulation("SCN-COOL-001")
+        assert operational_scope_id(svc.engine) not in (first, second)
+    finally:
+        svc.shutdown()
+
+
+def test_operational_scope_id_discloses_no_benchmark_information():
+    """Scopes of the faulted demo (twice, identical run id), its no-fault twin, the baseline and the
+    fault library. The id is 'OS-' + 32 hex digits, so it cannot hold a scenario name, id or fault id;
+    identical runs get different ids, so it is not a function of scenario, seed, configuration or run
+    id; and it is fixed before the first event and never changes, so it carries no time, event count or
+    fault onset."""
+    store = ScenarioStore()
+    faulted = store.load("SCN-COOL-001")
+    healthy = copy.deepcopy(faulted)
+    healthy["faults"] = []
+    cases = [faulted, copy.deepcopy(faulted), healthy, store.load("SCN-BASELINE"), store.load("SCN-FAULT-LIBRARY")]
+    ids, run_ids = [], []
+    for scenario in cases:
+        svc = SimulatorService(start_runner=False)
+        try:
+            svc.create_simulation(scenario=scenario)
+            eng = svc.engine
+            sid = operational_scope_id(eng)
+            assert SCOPE_RE.fullmatch(sid)
+            eng.step(120)
+            assert operational_scope_id(eng) == sid                     # independent of time and events
+            run = eng.state.run
+            for secret in (run["run_id"], scenario["id"], scenario.get("name", ""), eng.config_hash,
+                           *[f.get("id", "") for f in scenario.get("faults", [])]):
+                assert not secret or secret not in sid
+            ids.append(sid)
+            run_ids.append(run["run_id"])
+        finally:
+            svc.shutdown()
+    assert run_ids[0] == run_ids[1] and ids[0] != ids[1]                 # same run id, different scopes
+    assert len(set(ids)) == len(ids)
+
+
+@requires_mosquitto
+def test_retained_only_subscriber_identifies_the_current_scope():
+    """A subscriber that connects after a reset, has no session and never saw SIMULATION_RESET, reads
+    only retained messages and can tell which scope they belong to: the lifecycle names it and every
+    retained manufacturing payload carries the same id."""
+    with LocalBroker() as b:
+        svc, pub = run(b.port, until=1000)                 # QS-00001 exists in the first scope
+        first = Collector(b.port, "t-first").start()
+        old = first.quiet()
+        first.stop()
+        (old_scope,) = scopes(old)
+        svc.reset_simulation()
+        pub.sync()
+        eng = svc.engine
+        while eng.clock.time_s < 60:
+            eng.step(1)
+            pub.sync()
+        pub.flush()
+        fresh = Collector(b.port, "t-fresh").start()
+        msgs = fresh.quiet()
+        fresh.stop()
+        assert msgs and all(r for _, _, r, _ in msgs) and not any("/event/" in t for t, *_ in msgs)
+        lifecycle = json.loads(next(p for t, p, _, _ in msgs if t.endswith("/lifecycle")))
+        current = lifecycle["operational_scope_id"]
+        assert current != old_scope and current == operational_scope_id(svc.engine)
+        assert scopes(msgs) == {current}                   # nothing stale, nothing mixed
+        assert not any("QS-00001" in t for t, *_ in msgs)
+        assert all(json.loads(p)["simulation_time"] <= 60 for _, p, _, _ in msgs
+                   if json.loads(p)["kind"] != "publisher")
+        pub.close()
+        svc.shutdown()
+
+
+# ---------------------------------------------------------------------------- timestamps
+@requires_mosquitto
+def test_simulation_time_is_manufacturing_time_and_observed_at_is_wall_clock(stream):
+    """Events carry the simulator time of the event, measurements the time of their sample, and every
+    manufacturing time is on the simulated calendar; observed_at is the wall-clock time of publication
+    and is never equal to, or used as, simulation time."""
+    svc, msgs = stream["svc"], stream["msgs"]
+    wall0, wall1 = stream["wall"]
+    by_id = {e["event_id"]: e for e in svc.get_events(limit=20000)}
+    seen = set()
+    for _, d, _, _ in loads(msgs):
+        if d["kind"] == "publisher":
+            continue
+        seen.add(d["kind"])
+        assert wall0 <= d["observed_at"] <= wall1
+        assert d["observed_at"] != d["simulation_timestamp"]
+        if d["kind"] == "event":
+            e = by_id[d["event_id"]]
+            assert (d["simulation_time"], d["simulation_timestamp"]) == (e["simulation_time"], e["timestamp"])
+        elif d["kind"] == "measurement":
+            assert d["simulation_time"] % PERIOD == 0
+    assert seen == {"meta", "state", "measurement", "event", "lifecycle"}
+
+
+# ---------------------------------------------------------------------------- broker security boundary
+def test_broker_configuration_is_local_development_only_and_documented():
+    conf = CONF.read_text(encoding="utf-8")
+    directives = {}
+    for line in conf.splitlines():
+        words = line.split("#", 1)[0].split()
+        if words:
+            directives[words[0]] = words[1:]
+    assert directives["listener"] == ["1883", "127.0.0.1"]             # loopback only
+    assert directives["allow_anonymous"] == ["true"] and directives["persistence"] == ["false"]
+    assert not {"password_file", "acl_file", "certfile", "keyfile", "cafile"} & set(directives)
+    assert "NOT a production security configuration" in conf
+    for doc in ("docs/UNS.md", "docs/UNS_OPERATING_MODEL.md"):
+        assert "not a production security configuration" in (ROOT_DIR / doc).read_text(encoding="utf-8").lower()

@@ -11,7 +11,7 @@ available to any MQTT client, and MQTT is its transport.
 |---|---|
 | this file | what the UNS is, why MQTT, why ISA-95, and how it relates to the simulator and to future systems |
 | [UNS_MQTT_NAMESPACE.md](UNS_MQTT_NAMESPACE.md) | the topic tree, the ISA-95 mapping table, canonical-id escaping, and real topic examples |
-| [UNS_MQTT_SEMANTICS.md](UNS_MQTT_SEMANTICS.md) | payloads, timestamps, units, retained state, QoS, duplicates, ordering, reconnect, lifecycle, identity scope, determinism |
+| [UNS_MQTT_SEMANTICS.md](UNS_MQTT_SEMANTICS.md) | payloads, timestamps, units, retained state, QoS, duplicates, ordering, reconnect, lifecycle, operational scope, determinism |
 | [UNS_OPERATING_MODEL.md](UNS_OPERATING_MODEL.md) | how simulator state becomes MQTT messages, the roles of broker, publisher and subscriber, reset, the boundary, and what belongs in the UNS |
 
 The code is in [uns/](../uns/):
@@ -33,6 +33,17 @@ python scripts/run_uns.py --scenario SCN-COOL-001
 # 3. any subscriber
 mosquitto_sub -h 127.0.0.1 -t 'uns/v1/#' -v
 ```
+
+**Security.** [uns/mosquitto.conf](../uns/mosquitto.conf) is a local-development and test
+configuration. It is **not a production security configuration**:
+
+- anonymous access is enabled;
+- authentication, authorization and TLS are not configured;
+- persistence is disabled;
+- the listener is bound to the loopback interface.
+
+A production deployment would need authentication, authorization and TLS. That is outside the scope of
+this benchmark ([UNS_OPERATING_MODEL.md](UNS_OPERATING_MODEL.md#broker-security)).
 
 `pip install paho-mqtt` (listed in [requirements.txt](../requirements.txt)) is the only new Python
 dependency. The runner drives the simulator itself (`SimulatorService(start_runner=False)`, one simulated
@@ -133,10 +144,38 @@ the `entity_id` in the payload. Canonical ids are escaped only where MQTT forbid
 ## Relationship to the simulator
 
 The simulator is authoritative. After every simulated second, the UNS publisher reads the simulator
-through the operational boundary and publishes what changed. Payloads use the simulator's own clock:
-`simulation_time`, and `timestamp` as an ISO time on the simulated calendar. The publisher never
-publishes wall-clock time, and it never alters simulator state, timing, physics or the event stream.
-Pacing (`--speed`) changes only when messages are sent, never what they contain.
+through the operational boundary and publishes what changed. The publisher never alters simulator
+state, timing, physics or the event stream.
+
+**Timestamps.** Every payload keeps two clocks apart:
+
+- `simulation_time`, with `simulation_timestamp` as an ISO time on the simulated calendar. This is the
+  simulator's own clock and the **only manufacturing time**. An event carries the time it happened, a
+  measurement the time it was sampled, and a state the time its content was first observed.
+  Republication after a reconnect or a publisher restart never changes it.
+- `observed_at`. This is the wall-clock time at which the publisher sent this copy. It is transport
+  metadata, never used for manufacturing reasoning.
+
+Pacing (`--speed`) changes when messages are sent and their `observed_at`, never their content or
+simulation time ([semantics](UNS_MQTT_SEMANTICS.md#timestamps)).
+
+## Operational scope
+
+Every simulation (from its creation or reset until the next one) is one **operational scope**. Record
+and event ids are unique only within a scope. Every payload names its scope with an
+`operational_scope_id`: an opaque `OS-` + 128-bit random token issued by the operational boundary
+(`api.operational.operational_scope_id`).
+
+- It is **not** the simulator's run id, which stays hidden because it names the scenario.
+- It is not derived from the scenario, seed, configuration, faults, time or events, so it identifies a
+  simulation without saying anything about it.
+- It stays the same across publisher restarts, broker restarts and subscriber reconnects, and changes
+  on every reset or new simulation.
+- The retained `<site>/lifecycle` topic states the current scope. A subscriber that connects at any
+  time can therefore tell, from retained messages alone, which simulation the retained state belongs
+  to.
+
+This resolves R-01 ([semantics](UNS_MQTT_SEMANTICS.md#operational-scope-r-01)).
 
 ## Operational boundary
 

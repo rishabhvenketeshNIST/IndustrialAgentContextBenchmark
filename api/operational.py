@@ -16,10 +16,15 @@ The rules follow where information originates (docs/CANONICAL_SIMULATOR_CONTRACT
 * correlation and causation are rebuilt from operational causation only (a fault-derived correlation
   would name the fault), and operational event ids are renumbered so that withheld events leave no gap;
 * the run manifest keeps no scenario identity, seeds or configuration hash (they allow the scenario, or
-  a fault-free twin run, to be reconstructed).
+  a fault-free twin run, to be reconstructed);
+* the operational scope id (``operational_scope_id``) is the only simulation identity operational
+  consumers get: an opaque random token per simulation scope, never derived from the run id.
 """
 from __future__ import annotations
 
+import secrets
+import threading
+import weakref
 from typing import Any, Dict, List, Optional, Set
 
 from simulator.events import EventType, Visibility
@@ -106,6 +111,26 @@ def manifest(m: dict) -> dict:
         if k in m:
             out[k] = m[k]
     return out
+
+
+# ---------------------------------------------------------------------------- operational scope
+# A simulation scope is one engine: SimulatorService builds a new engine on every create and reset.
+_SCOPES: "weakref.WeakKeyDictionary[Any, str]" = weakref.WeakKeyDictionary()
+_SCOPES_LOCK = threading.Lock()
+
+
+def operational_scope_id(engine) -> str:
+    """Opaque identity of the simulation scope an operational observation belongs to (R-01).
+
+    ``OS-`` + 128 random bits from ``secrets``, drawn once per engine and stable for its lifetime. It
+    is not derived from the run id, scenario, seed, configuration, faults, time or events, so it can
+    tell two scopes apart but says nothing about either. Record and event ids are unique within a
+    scope; (operational_scope_id, id) is unique across scopes."""
+    with _SCOPES_LOCK:
+        sid = _SCOPES.get(engine)
+        if sid is None:
+            sid = _SCOPES[engine] = "OS-" + secrets.token_hex(16)
+        return sid
 
 
 # ---------------------------------------------------------------------------- events

@@ -4,6 +4,43 @@ Notable changes to this repository. The simulator version is `simulator.__versio
 contract version is `contract.version` in `contract/canonical_contract.yaml`
 (see [contract §23](docs/CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)).
 
+## [Unreleased]: UNS hardening (payload schema acme-uns/2, context model 0.3.0)
+
+**No simulator, configuration, scenario or REST API change.** Resolves the three open points of the
+first UNS commit.
+
+### Added
+
+- **Operational scope id (resolves R-01):** `api.operational.operational_scope_id(engine)`, an opaque
+  `OS-` + 128-bit random token per simulation scope.
+  - It is not the run id and is not derived from scenario, seed, configuration, faults, time or events.
+  - It is stable across publisher restarts, broker restarts and subscriber reconnects, and new on every
+    create and reset.
+  - It is carried in every UNS manufacturing payload. The retained lifecycle names the current scope,
+    so a retained-only subscriber can tell which simulation the retained state belongs to.
+  - The context model is 0.3.0, with `identity.operational_scope` and R-01 resolved.
+- **`observed_at`:** the wall-clock time of each publication, as transport metadata.
+- **Security documentation:** `uns/mosquitto.conf` and the docs state that the broker configuration is
+  for local development and tests only (anonymous, no authentication, authorization or TLS, no
+  persistence), not a production security configuration.
+- **Five new tests** (20 UNS tests, 139 in total): scope identity, scope non-disclosure, retained-only scope
+  discovery, simulation time vs observed_at, and the broker security boundary. The reconnect,
+  broker-restart, reset, determinism and non-disclosure tests now assert scope and simulation-time
+  behaviour.
+
+### Changed
+
+- **Payload schema `acme-uns/2`:** `timestamp`, which was simulated-calendar time, is renamed
+  `simulation_timestamp`, and `operational_scope_id` and `observed_at` are added.
+- **Republication keeps simulation time.**
+  - After a broker restart, and after a publisher restart within the same scope, retained messages keep
+    their `simulation_time`; only `observed_at` changes.
+  - A restarted publisher adopts same-scope retained messages. It no longer re-dates unchanged state,
+    and no longer deletes the last measurement samples when it attaches between sampling ticks.
+- **Pacing before publishing:** `run_uns.py` publishes after the pacing sleep, so `observed_at` follows
+  the pacing schedule rather than per-step compute time.
+- **README:** no longer lists the UNS as out of scope.
+
 ## [Unreleased]: ISA-95-based MQTT Unified Namespace
 
 **No simulator, API, configuration, scenario or contract-semantics change.** Adds the Unified Namespace:
@@ -23,10 +60,10 @@ context model through the operational boundary.
 - Dependency `paho-mqtt`; a broker (Eclipse Mosquitto) is needed for the UNS and its tests (the tests
   skip without it).
 
-### Open
+### Open (resolved by the UNS hardening entry above)
 
-- R-01: no operational run key. Subscribers detect a new identity scope from lifecycle events; a
-  retained-state-only subscriber cannot tell two scopes apart (docs/UNS_MQTT_SEMANTICS.md).
+- R-01: no operational run key. Subscribers detected a new identity scope from lifecycle events; a
+  retained-state-only subscriber could not tell two scopes apart.
 
 ## [Unreleased]: canonical context model 0.2.0
 

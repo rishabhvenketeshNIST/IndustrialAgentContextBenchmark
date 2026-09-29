@@ -12,5 +12,7 @@ Documentation: docs/UNS.md, docs/UNS_MQTT_NAMESPACE.md, docs/UNS_MQTT_SEMANTICS.
 docs/UNS_OPERATING_MODEL.md.
 """
 
-SCHEMA = "acme-uns/1"
+# Payload schema. acme-uns/2: operational_scope_id added; the simulated-calendar "timestamp" renamed
+# simulation_timestamp; wall-clock observed_at added (docs/UNS_MQTT_SEMANTICS.md).
+SCHEMA = "acme-uns/2"
 DEFAULT_ROOT = "uns/v1"

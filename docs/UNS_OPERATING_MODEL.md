@@ -33,26 +33,28 @@ under the service lock and publishes what changed:
 
 | Moment | What is published |
 |---|---|
-| **start-up** (`connect`) | Retained `uns/publisher = online`, with the last will set to `offline`. The retained topics already under the root are read, to find stale candidates. |
-| **first `sync`** (new identity scope) | The scope's events so far (`SIMULATION_STARTED`), every `meta`, the `lifecycle`, every entity and record `state`, and all measurements if the time is a sampling tick. Stale retained topics are then deleted. |
+| **start-up** (`connect`) | Retained `uns/publisher = online`, with the last will set to `offline`. The retained topics already under the root are read: the same-scope ones to adopt, the others as stale candidates. |
+| **first `sync`** (new operational scope) | The scope's `operational_scope_id` is taken from the operational boundary. The publisher then publishes the scope's events so far (`SIMULATION_STARTED`), every `meta`, the `lifecycle`, every entity and record `state`, and all measurements if the time is a sampling tick. Stale retained topics are then deleted. |
+| **first `sync`** (publisher restarted within a running scope) | No past events. The current snapshot is published, reusing the simulation time of every same-scope retained message whose content is unchanged. The last samples and deferred continuous changes stay retained until the next tick. |
 | **every step** | New operational events, in stream order. Every entity state or record discrete change. The lifecycle, if it changed. |
 | **every sampling tick** (`simulation_time % period == 0`, default 10 s) | Every measurement. Deferred continuous record changes. `meta` whose content changed (for example, a newly observed measurement leaf). |
 | **pause / resume** | The `SIMULATION_PAUSED` / `SIMULATION_RESUMED` events, and lifecycle `PAUSED` / `RUNNING`. |
-| **reset** | A new identity scope ([Reset](#reset-behaviour)). |
+| **reset** | A new operational scope with a new `operational_scope_id` ([Reset](#reset-behaviour)). |
 | **completion** | `SIMULATION_COMPLETED` and lifecycle `COMPLETED`. The retained tree keeps the final state. |
 | **shutdown** (`close`) | Retained `uns/publisher = offline`, then a clean disconnect. |
 | **broker lost / restored** | Events are buffered; after reconnect everything is resynchronised ([semantics](UNS_MQTT_SEMANTICS.md#reconnect)). |
 
 The publisher changes nothing in the simulator. It does not alter physics, controllers, timing, fault
 behaviour, scenarios, the boundary or the API. `scripts/run_uns.py` owns the stepping loop. Pacing
-(`--speed`) only sleeps between steps. The web UI and REST API ([run.py](../run.py)) are unchanged and
-do not publish to MQTT.
+(`--speed`) only sleeps between a step and its publication, so it changes `observed_at` but never
+simulation time or content. The web UI and REST API ([run.py](../run.py)) are unchanged and do not
+publish to MQTT.
 
 ## Broker role
 
 The broker is Eclipse Mosquitto (MQTT 3.1.1), configured by [uns/mosquitto.conf](../uns/mosquitto.conf):
-loopback listener, anonymous access (local development only), no persistence, and no queue limit. The
-broker's jobs are to:
+loopback listener, anonymous access, no persistence, and no queue limit. This is a local-development
+configuration ([Broker security](#broker-security)). The broker's jobs are to:
 
 - route messages by topic filter;
 - hold the retained current state for new subscribers;
@@ -62,11 +64,40 @@ broker's jobs are to:
 It holds no manufacturing logic. [uns/broker.py](../uns/broker.py) starts it as a child process for
 tests and for `run_uns.py --start-broker`.
 
+## Broker security
+
+**The included broker configuration, [uns/mosquitto.conf](../uns/mosquitto.conf), is a
+local-development and test configuration. It is not a production security configuration.**
+
+- **Anonymous access is enabled.** Any client that can reach the listener may connect.
+- **Authentication is not configured.** There is no password file and no client certificates.
+- **Authorization is not configured.** There is no ACL, so any connected client could publish under
+  `uns/v1/#`.
+- **TLS is not configured.** Traffic is plain MQTT. The only protection is that the listener is bound to
+  the loopback interface (`127.0.0.1`), so only local processes can connect.
+- **Persistence is disabled.** This is deliberate for the benchmark ([semantics](UNS_MQTT_SEMANTICS.md#retained-state)),
+  not a security measure.
+
+A production deployment would need at least:
+
+- authentication of every client;
+- authorization, so that only the UNS publisher may write under the UNS root and subscribers may only
+  read;
+- TLS on every listener;
+- a reviewed decision on persistence.
+
+Production security is outside the scope of this benchmark prototype. The repository adds no
+credentials, certificates or deployment tooling.
+
 ## Publisher role
 
 There is one publisher per simulation. Its client id is fixed, so a second instance replaces the first
 at the broker. The publisher:
 
+- takes the `operational_scope_id` from the operational boundary. It never generates its own, so a
+  publisher restart is not a new scope;
+- stamps every payload with the simulation time of the information and with its own wall-clock
+  `observed_at`, keeping the two apart;
 - derives topics from the hierarchy (it never invents entities);
 - routes properties to state, measurement or meta by their contract property class;
 - publishes only operational information, through the boundary functions;
@@ -81,27 +112,31 @@ A subscriber should:
    at once;
 2. identify entities by the payload's `entity_id`, not by parsing the topic;
 3. check `<site>/uns/publisher`. If it is `offline`, the retained data is not being updated;
-4. treat state as replace-on-receive and events as occurrences, de-duplicating on `event_id` if it
-   counts them;
-5. order by `simulation_time` and by `event_id`, never by arrival order across topics;
-6. watch for `SIMULATION_RESET` / `SIMULATION_STARTED` and clear its per-scope state when either
-   arrives;
+4. take the current scope from the retained `<site>/lifecycle` (`operational_scope_id`), and keep only
+   messages with that id. When a message with a new id arrives, clear all per-scope state: it is a new
+   simulation;
+5. treat state as replace-on-receive and events as occurrences, de-duplicating on
+   `(operational_scope_id, event_id)` if it counts them;
+6. use `simulation_time` for all manufacturing reasoning and ordering (and `event_id` for events),
+   never `observed_at` and never arrival order across topics;
 7. use a persistent session (fixed client id, `clean_session=False`) if it must not miss events while
    disconnected.
 
 ## Reset behaviour
 
-`reset_simulation()` creates a new engine, and therefore a new identity scope. On the next `sync`, the
-publisher:
+`reset_simulation()` creates a new engine, and therefore a new operational scope with a new
+`operational_scope_id`. On the next `sync`, the publisher:
 
 1. publishes the new scope's events, starting with `SIMULATION_RESET` (`LC-0000001`);
-2. publishes the new snapshot: meta, lifecycle `READY`, and every state and measurement;
+2. publishes the new snapshot, all carrying the new id: meta, lifecycle `READY`, and every state and
+   measurement;
 3. deletes, with an empty retained message, every retained topic of the old scope that does not exist
    in the new one (for example a quality sample or a lot created during the old run).
 
-The retained tree therefore never mixes two scopes. How subscribers detect the new scope, and the
-limitation that no run key exists, are described in
-[UNS_MQTT_SEMANTICS.md](UNS_MQTT_SEMANTICS.md#identity-scope-reset-r-01).
+The retained tree therefore never mixes two scopes, and every retained message says which scope it
+belongs to. A subscriber that connects after the reset needs neither the `SIMULATION_RESET` event nor
+a session to know that the state is from the new simulation. The scope semantics, and why the id is
+not the simulator's run id, are in [UNS_MQTT_SEMANTICS.md](UNS_MQTT_SEMANTICS.md#operational-scope-r-01).
 
 ## Operational boundary
 
@@ -115,7 +150,8 @@ The UNS follows [api/operational.py](../api/operational.py). It does not filter 
 
 Evaluator-only information never reaches the broker:
 
-- scenario id, run id, seed, configuration hash;
+- scenario id, run id, seed, configuration hash. The only simulation identity is the opaque
+  `operational_scope_id`, which carries none of them;
 - faults and disturbances;
 - asset health and capacity;
 - operator actions;
@@ -141,7 +177,12 @@ alarm VAH-CWP101A at 01:20:33). The two MQTT streams have:
 - identical meta, lifecycle and publisher-status messages;
 - identical event ids, event types, targets, times and causation;
 - the same sequence of discrete state (statuses, dispositions, modes, assignments);
-- **byte-identical content before the fault starts** (t < 3600 s).
+- **byte-identical content before the fault starts** (t < 3600 s);
+- one `operational_scope_id` each, constant across fault onset.
+
+Two independent runs are necessarily two scopes, so their scope ids differ (they are random). The test
+also compares them, with the by-design fields masked (the opaque scope id and the wall-clock
+`observed_at`), so that nothing else can hide there.
 
 The fault starts at 3600 s. From then until the first symptom, the only differences are **float
 values**:
@@ -152,8 +193,28 @@ values**:
 
 These are the legitimate physical observations that a diagnosis must use. The disclosure channels
 listed in the requirement show no difference: topic names, payload fields, retained messages, event
-numbering, timestamps, ordering, connection behaviour and message counts. The UNS has no sequence
-counter, so there is none to compare.
+numbering, simulation timestamps, ordering, connection behaviour and message counts. The UNS has no
+sequence counter, so there is none to compare.
+
+**The scope id** is random, drawn before the first event and never changed, so it identifies a
+simulation without describing it. `test_operational_scope_id_discloses_no_benchmark_information`
+checks this with scopes of:
+
+- the faulted demo, twice (with the same run id);
+- its no-fault twin;
+- the baseline;
+- the fault library.
+
+The ids have a fixed format that cannot hold a name or id. Identical runs get different ids. No id
+changes over time or with events.
+
+**`observed_at`** is wall-clock time, so it is outside what the determinism and non-disclosure tests can
+fix. In a paced run (`run_uns.py --speed > 0`), the publisher publishes after the pacing sleep, so
+`observed_at` follows the pacing schedule rather than per-step compute time. In an unpaced run
+(`--speed 0`), `observed_at` reflects compute throughput, which could in principle differ between
+scenarios. A consumer that must not learn anything beyond plant observations, such as an agent under
+evaluation, must therefore use a paced run or ignore `observed_at`. It is transport metadata and never
+needed for manufacturing reasoning.
 
 ## What belongs in the UNS
 

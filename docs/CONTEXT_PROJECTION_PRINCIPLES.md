@@ -43,9 +43,10 @@ U-05).
 * **Carry it verbatim:** carry the canonical id itself (e.g. a `canonical_id` attribute on a UNS
   payload, a historian tag or a KG node). Escape characters such as `(` `)` for the transport, never in
   the id.
-* **Run scope:** record and event identities are unique only within one run. A projection starts a new
-  run scope on `SIMULATION_RESET`, and on a new `SIMULATION_STARTED` after a reset or create; it must
-  not use the evaluator-only run id for this (R-01).
+* **Run scope:** record and event identities are unique only within one run. A projection carries the
+  opaque `operational_scope_id` (from `api/operational.py`) with every run-scoped observation, so that
+  consumers can attribute it to its simulation. It must not use the evaluator-only run id for this, and
+  must not invent its own id per projection process (R-01).
 
 ## P3. Same semantics
 

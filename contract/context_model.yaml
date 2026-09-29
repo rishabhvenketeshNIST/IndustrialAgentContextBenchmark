@@ -17,8 +17,8 @@
 #   internal               - exists in the simulator but is served by no route
 
 context_model:
-  version: 0.2.0
-  status: draft (open decisions U-01..U-07 resolved; see docs/CONTEXT_MODEL_DECISIONS.md)
+  version: 0.3.0
+  status: draft (decisions U-01..U-07 and R-01 resolved; see docs/CONTEXT_MODEL_DECISIONS.md)
   describes_simulator_version: 1.0.0
   canonical_contract_version: 0.2.0
 
@@ -44,6 +44,17 @@ identity:
   uniqueness_scope:
     static: "hierarchy elements, utilities, materials, products, measurements, manipulated variables, disturbances, control loops, quality tests: unique and stable across runs of the same configuration"
     run: "records (lots, orders, work orders, samples, purchase orders, shipments, alarms state) and events: unique within one run; native ids restart when a simulation is created or reset"
+  operational_scope:                  # decision R-01
+    id: operational_scope_id
+    source: api/operational.py operational_scope_id(engine)
+    format: "OS-<32 hex digits>"
+    rule: >-
+      One simulation (from its creation or reset until the next one) is one operational scope, and
+      run-scoped identities are unique within it; (operational_scope_id, native id) is unique across
+      scopes. The id is 128 random bits drawn once per scope: it is not the evaluator-only run id and
+      is not derived from the scenario, seed, configuration, faults, time or events, so it identifies
+      a scope without describing it. It survives projection reconnects and restarts and changes on
+      every create and reset. Projections carry it with every run-scoped observation.
   projections: >-
     UNS topics, historian tags and KG IRIs must carry the canonical id verbatim (e.g. a canonical_id
     attribute) and any path or IRI form must be reversible to it. Characters such as '(' ')' in native

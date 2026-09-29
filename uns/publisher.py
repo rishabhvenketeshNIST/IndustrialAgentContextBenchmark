@@ -15,6 +15,10 @@ reads the simulator only through the operational boundary (``api/operational.py`
     lifecycle     retained, QoS 1   simulation status (READY | RUNNING | PAUSED | COMPLETED)
     uns/publisher retained, QoS 1   publisher online/offline (MQTT last will)
 
+Every manufacturing payload names its simulation scope (``operational_scope_id``, from the operational
+boundary) and separates two clocks: ``simulation_time``/``simulation_timestamp`` (simulator time, the
+only manufacturing time) and ``observed_at`` (wall-clock time of this publication, transport metadata).
+
 The publisher never changes the simulator; it only reads it under the service lock.
 """
 from __future__ import annotations
@@ -24,6 +28,7 @@ import math
 import threading
 import time
 from collections import deque
+from datetime import datetime, timezone
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -56,6 +61,18 @@ RECORD_EXCLUDE = {"alarms": ("value",)}      # the alarm source's current value 
 # Record fields that are continuous quantities although stored as integers (a forecast in seconds).
 # Floats are always continuous.
 RECORD_CONTINUOUS = {"production_orders": ("projected_end",)}
+# Envelope fields that describe a publication rather than its content.
+PUBLICATION_FIELDS = ("simulation_time", "simulation_timestamp", "observed_at")
+
+
+def content_of(payload: dict) -> dict:
+    """A payload without its publication fields: what a republication must leave unchanged."""
+    return {k: v for k, v in payload.items() if k not in PUBLICATION_FIELDS}
+
+
+def wall_clock() -> str:
+    """Wall-clock UTC time for observed_at (transport metadata, never manufacturing time)."""
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _clean(x: Any) -> Any:
@@ -133,6 +150,11 @@ class UNSPublisher:
         self._last_state: Dict[str, Tuple[Any, str]] = {}
         self._pending_deletes: set = set()
         self._stale: set = set()
+        self._found: Dict[str, str] = {}          # retained topic -> payload found on the broker at connect
+        self._adopt: Dict[str, dict] = {}         # same-scope retained payloads a (re)started publisher reuses
+        self._scope_id: Optional[str] = None
+        self._keep: set = set()
+        self._observed_at = wall_clock()
         self._events_buffer: Deque[Tuple[str, str]] = deque()
         self._last_tick: Optional[int] = None
         self._lifecycle: Optional[str] = None
@@ -183,14 +205,15 @@ class UNSPublisher:
         return self._connected.is_set()
 
     def _discover_stale_retained(self, settle: float = 0.3) -> None:
-        """Retained topics left under the root by an earlier publisher session are purged at the first
-        sync unless the current snapshot republishes them (stale-state prevention)."""
-        found = set()
+        """Read the retained topics already under the root. At the first sync, those of the current
+        operational scope are adopted (a publisher restart: same content keeps its simulation time);
+        every other one is purged unless the current snapshot republishes it (stale-state prevention)."""
+        found: Dict[str, str] = {}
         last = [time.monotonic()]
 
         def on_message(client, userdata, msg):
-            if msg.retain and msg.topic != self._status_topic:
-                found.add(msg.topic)
+            if msg.retain and msg.topic != self._status_topic and msg.payload:
+                found[msg.topic] = msg.payload.decode("utf-8", "replace")
             last[0] = time.monotonic()
         self._client.on_message = on_message
         self._client.subscribe(f"{self.root}/#", qos=0)
@@ -199,7 +222,8 @@ class UNSPublisher:
             time.sleep(0.05)
         self._client.unsubscribe(f"{self.root}/#")
         self._client.on_message = None
-        self._stale = found
+        self._found = found
+        self._stale = set(found)
 
     def close(self) -> None:
         if self._client is None:
@@ -253,14 +277,25 @@ class UNSPublisher:
                 self._sent_retained.pop(topic, None)
         self.sent[kind] += 1
 
-    def _retain(self, topic: str, payload: str, qos: int, kind: str, force: bool = False) -> None:
-        if force or self.retained.get(topic) != payload:
-            self._publish(topic, payload, qos, True, kind)
+    def _retain(self, topic: str, payload: dict, qos: int, kind: str) -> None:
+        """Publish a retained payload. A publisher that attached to a running scope first reuses the
+        simulation time of the same-scope retained message it found, if the content is unchanged: a
+        republication is not a new manufacturing observation."""
+        adopted = self._adopt.pop(topic, None)
+        if adopted is not None and content_of(adopted) == content_of(_clean(payload)):
+            payload = dict(payload, simulation_time=adopted["simulation_time"],
+                           simulation_timestamp=adopted["simulation_timestamp"])
+        self._publish(topic, self._stamp(payload), qos, True, kind)
+
+    def _stamp(self, payload: dict) -> str:
+        payload["observed_at"] = self._observed_at
+        return encode(payload)
 
     def _envelope(self, cid: str, kind: str, **fields) -> dict:
         eng = self._engine
         d = {"schema": SCHEMA, "kind": kind, "entity_id": cid, "entity_type": cid.split(":", 1)[0],
-             "simulation_time": eng.clock.time_s, "timestamp": eng.clock.timestamp()}
+             "operational_scope_id": self._scope_id,
+             "simulation_time": eng.clock.time_s, "simulation_timestamp": eng.clock.timestamp()}
         d.update(fields)
         return d
 
@@ -269,6 +304,7 @@ class UNSPublisher:
         """Publish everything that changed since the last call. Call after every simulation step."""
         with self.service.lock:
             eng = self.service._eng()
+            self._observed_at = wall_clock()
             if self._resync and self.connected:
                 self._do_resync()
             if eng is not self._engine:
@@ -290,6 +326,18 @@ class UNSPublisher:
         old = set(self.retained) - {getattr(self, "_status_topic", None)}
         attach_mid_run = self._engine is None and eng.clock.time_s > 0
         self._engine = eng
+        self._scope_id = operational.operational_scope_id(eng)
+        # retained messages of this very scope (a publisher restart): reuse, never re-date
+        self._adopt = {}
+        for topic, raw in self._found.items():
+            try:
+                d = json.loads(raw)
+            except ValueError:
+                continue
+            if isinstance(d, dict) and d.get("operational_scope_id") == self._scope_id:
+                self._adopt[topic] = d
+        self._found = {}
+        self._keep: set = set()
         self.ns = Namespace(eng, self.cm, self.root)
         self._ops = operational.OperationalEventView(eng.bus)
         self._events_done = 0
@@ -308,11 +356,17 @@ class UNSPublisher:
         self.retained = {k: v for k, v in self.retained.items() if k == getattr(self, "_status_topic", None)}
         self._publish_meta()
         self._publish_lifecycle()
-        self._publish_states(tick=True)
         t = eng.clock.time_s
+        self._publish_states(tick=t % self.period == 0)
         if t % self.period == 0:
             self._publish_measurements()
             self._last_tick = t
+        for topic, d in sorted(self._adopt.items()):
+            # not republished: between sampling ticks the last same-scope samples, and states whose
+            # only change waits for the next tick, stay retained as they are
+            if d.get("kind") == "measurement" or topic in self._keep:
+                self.retained[topic] = self._sent_retained[topic] = encode(d)
+        self._adopt, self._keep = {}, set()
         for topic in sorted((old | self._stale) - set(self.retained)):
             self._publish(topic, "", QOS_STATE, True, "delete")
         self._stale = set()
@@ -332,8 +386,9 @@ class UNSPublisher:
         for topic, payload in sorted(self.retained.items()):
             if topic == self._status_topic:
                 continue
-            kind = topic.rsplit("/", 2)[-2] if "/measurement/" in topic else topic.rsplit("/", 1)[-1]
-            self._publish(topic, payload, QOS_MEASUREMENT if kind == "measurement" else QOS_STATE, True,
+            d = json.loads(payload)                 # same content and simulation time, new observed_at
+            kind = d["kind"]
+            self._publish(topic, self._stamp(d), QOS_MEASUREMENT if kind == "measurement" else QOS_STATE, True,
                           kind if kind in self.sent else "state")
 
     # ------------------------------------------------------------------ meta
@@ -368,7 +423,7 @@ class UNSPublisher:
             content = _clean(meta)
             if self._meta_content.get(topic) != content:     # static, but measurement leaves can appear later
                 self._meta_content[topic] = content
-                self._retain(topic, encode(self._envelope(cid, "meta", **meta)), QOS_STATE, "meta", force=True)
+                self._retain(topic, self._envelope(cid, "meta", **meta), QOS_STATE, "meta")
 
     # ------------------------------------------------------------------ property routing
     def _scope(self, rec) -> Optional[str]:
@@ -498,6 +553,11 @@ class UNSPublisher:
         body = _clean(fields)
         disc = discrete_projection(body, continuous) if continuous else body
         last = self._last_state.get(topic)
+        if last is None and topic in self._adopt:
+            # a restarted publisher continues from the same-scope retained state, under the same rules
+            prev = {k: self._adopt[topic].get(k) for k in fields}
+            last = self._last_state[topic] = (discrete_projection(prev, continuous) if continuous else prev, prev)
+            self._keep.add(topic)           # stays retained as it is unless republished below
         if last is not None:
             if last[0] == disc and last[1] != body and not tick:
                 return                      # only continuous quantities changed: wait for the sampling period
@@ -507,7 +567,7 @@ class UNSPublisher:
                 return                      # nothing changed
         self._last_raw[topic] = _snap(fields)
         self._last_state[topic] = (disc, body)
-        self._retain(topic, encode(self._envelope(cid, "state", **fields)), QOS_STATE, "state", force=True)
+        self._retain(topic, self._envelope(cid, "state", **fields), QOS_STATE, "state")
 
     # ------------------------------------------------------------------ measurements
     def _publish_measurements(self) -> None:
@@ -515,8 +575,8 @@ class UNSPublisher:
         for cid in ns.entity_ids():
             for leaf, fields in self._entity_measurements(cid):
                 self._retain(ns.topic(cid, "measurement", leaf),
-                             encode(self._envelope(cid, "measurement", source="simulator", **fields)),
-                             QOS_MEASUREMENT, "measurement", force=True)
+                             self._envelope(cid, "measurement", source="simulator", **fields),
+                             QOS_MEASUREMENT, "measurement")
 
     # ------------------------------------------------------------------ lifecycle and events
     def _publish_lifecycle(self) -> None:
@@ -525,10 +585,9 @@ class UNSPublisher:
             self._lifecycle = status
             eng = self._engine
             self._retain(self.ns.topic(self.ns.site, "lifecycle"),
-                         encode(self._envelope(self.ns.site, "lifecycle", status=status,
-                                               simulation_start=iso(eng.clock.start),
-                                               duration_seconds=eng.duration_s)),
-                         QOS_STATE, "lifecycle", force=True)
+                         self._envelope(self.ns.site, "lifecycle", status=status,
+                                        simulation_start=iso(eng.clock.start), duration_seconds=eng.duration_s),
+                         QOS_STATE, "lifecycle")
 
     def _event_entity(self, target: Optional[str]) -> str:
         ns = self.ns
@@ -550,6 +609,7 @@ class UNSPublisher:
             payload = self._envelope(cid, "event", event_id=r["event_id"], event_type=r["type"], source=r["source"],
                                      severity=r["severity"], payload=r["payload"], causation_id=r["causation_id"],
                                      correlation_id=r["correlation_id"])
-            payload["simulation_time"], payload["timestamp"] = r["simulation_time"], r["timestamp"]
-            self._publish(self.ns.topic(cid, "event", r["type"]), encode(payload), QOS_EVENT, False, "event")
+            # an event carries the simulator time at which it happened, not the time it was published
+            payload["simulation_time"], payload["simulation_timestamp"] = r["simulation_time"], r["timestamp"]
+            self._publish(self.ns.topic(cid, "event", r["type"]), self._stamp(payload), QOS_EVENT, False, "event")
         self._events_done = len(records)

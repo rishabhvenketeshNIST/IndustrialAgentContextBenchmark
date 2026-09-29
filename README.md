@@ -7,8 +7,9 @@ provides everything around it: utilities, equipment condition, maintenance, mate
 warehouse, quality, production orders, scheduling, alarms, operator actions and a first-class,
 benchmark-only **fault engine**. A web UI visualises and controls it all.
 
-Out of scope by design: no UNS, MQTT, historian, knowledge graph, i3X, MCP, AI agent, LLM, vector
-database or RAG. Those can be added later as separate layers on top of the API.
+An ISA-95-based **Unified Namespace** publishes the live operational context over MQTT
+([docs/UNS.md](docs/UNS.md)). Out of scope by design: no historian, knowledge graph, i3X, MCP, AI agent,
+LLM, vector database or RAG. Those can be added later as separate layers.
 
 ```
 Enterprise ─ Site ─ ISA-95 Areas ─ Equipment ─ simulated processes ─ process state ─ events/alarms/faults/maintenance/production

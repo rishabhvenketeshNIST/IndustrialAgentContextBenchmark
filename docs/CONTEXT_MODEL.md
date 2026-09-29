@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Context model version** | 0.2.0 (draft; decisions U-01 to U-07 resolved) |
+| **Context model version** | 0.3.0 (draft; decisions U-01 to U-07 and R-01 resolved) |
 | **Describes** | simulator 1.0.0, canonical contract 0.2.0 |
 | **Machine-readable definition** | `contract/context_model.yaml` (checked by `tests/test_context_model.py`) |
 | **ISA-95 mapping** | [ISA95_SIMULATOR_MAPPING.md](ISA95_SIMULATOR_MAPPING.md) |
@@ -122,8 +122,11 @@ unchanged. The rule is **frozen** (decision U-05).
   * *static* identities (hierarchy elements, utilities, materials, products, process variables, loops,
     quality tests) are stable across runs;
   * *run-scoped* identities (records and events) are unique within one run, because the simulator
-    restarts their numbering on create and reset (see R-01 in the
-    [decisions](CONTEXT_MODEL_DECISIONS.md)).
+    restarts their numbering on create and reset;
+  * the run is named, for operational consumers, by its **operational scope id**
+    (`operational_scope_id`, `OS-` + 32 hex digits, from `api/operational.py`). This is an opaque random
+    token per simulation scope, not the evaluator-only run id. `(operational_scope_id, native id)` is
+    unique across runs (decision R-01 in the [decisions](CONTEXT_MODEL_DECISIONS.md)).
 * **Projections:** UNS topics, historian tags and KG IRIs carry the canonical id verbatim and must be
   reversible to it.
 
