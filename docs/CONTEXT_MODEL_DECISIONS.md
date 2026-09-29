@@ -159,11 +159,38 @@ operational events, not ground truth:
   health-band transitions stay withheld.
 * **Test:** `tests/test_context_model.py::test_u07_lifecycle_events_are_operational_and_carry_no_ground_truth`.
 
-## Remaining ambiguity
+## Resolved ambiguity (context model 0.3.0)
 
-| # | Question | Why it is open | Current handling |
-|---|---|---|---|
-| R-01 | How does an operational consumer tell two runs apart? | Run-scoped ids (records, `OE-`/`LC-` events) restart after a reset or a new simulation. The run id identifies the scenario, so the operational boundary removes it, and no opaque operational run key exists. | Projections must scope run-scoped identities to one run (e.g. start a new namespace on `SIMULATION_RESET` / `SIMULATION_STARTED`). Defining an opaque run key would be an operational-boundary change and needs a decision. |
+### R-01: how does an operational consumer tell two runs apart?
+
+* **Problem:** run-scoped ids (records, `OE-`/`LC-` events) restart after a reset or a new
+  simulation. The run id identifies the scenario (`RUN-<scenario>-<seed>-<config hash>`), so the
+  operational boundary removes it. A consumer that saw only current (retained) state could not tell
+  which simulation that state belonged to.
+* **Decision:** an **operational scope id** is added at the operational boundary:
+  `api.operational.operational_scope_id(engine)`, formatted `OS-` + 32 hex digits.
+  * **Random:** it is 128 random bits (`secrets`), drawn once per simulation engine and stable for its
+    lifetime. `SimulatorService` builds a new engine on every create and reset, so every create and
+    reset starts a new scope.
+  * **Nothing derived:** it is not the run id and is not derived from the scenario, seed, configuration,
+    faults, time or events. Two runs with the same run id get different scope ids.
+  * **Owned by the boundary:** it belongs to the simulation, not to a projection process, so a UNS
+    publisher restart keeps it.
+* **Why at the boundary, not in a projection:** a projection-generated id would change when the
+  projection restarts, which would make a restart look like a new simulation. It would also differ
+  between peer projections (UNS, historian, KG) of the same simulation.
+* **Simulator impact:** none. The id is kept in a weak-keyed map outside the engine; simulator state,
+  snapshots, run ids and configuration hashes are unchanged.
+* **Exposure:** the UNS carries it in every manufacturing payload and in the retained lifecycle
+  ([UNS_MQTT_SEMANTICS.md](UNS_MQTT_SEMANTICS.md#operational-scope-r-01)). The REST operational routes
+  do not expose it yet; adding it there would be an additive API change, left until a REST consumer
+  needs it.
+* **Tests:**
+  * `tests/test_uns.py::test_operational_scope_id_belongs_to_the_simulation_scope`
+  * `tests/test_uns.py::test_operational_scope_id_discloses_no_benchmark_information`
+  * `tests/test_uns.py::test_retained_only_subscriber_identifies_the_current_scope`
+
+No ambiguity from the 0.2.0 review remains open.
 
 Source:
 - `contract/context_model.yaml`

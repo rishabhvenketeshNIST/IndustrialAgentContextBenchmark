@@ -7,8 +7,9 @@ provides everything around it: utilities, equipment condition, maintenance, mate
 warehouse, quality, production orders, scheduling, alarms, operator actions and a first-class,
 benchmark-only **fault engine**. A web UI visualises and controls it all.
 
-Out of scope by design: no UNS, MQTT, historian, knowledge graph, i3X, MCP, AI agent, LLM, vector
-database or RAG. Those can be added later as separate layers on top of the API.
+An ISA-95-based **Unified Namespace** publishes the live operational context over MQTT
+([docs/UNS.md](docs/UNS.md)). Out of scope by design: no historian, knowledge graph, i3X, MCP, AI agent,
+LLM, vector database or RAG. Those can be added later as separate layers.
 
 ```
 Enterprise ─ Site ─ ISA-95 Areas ─ Equipment ─ simulated processes ─ process state ─ events/alarms/faults/maintenance/production
@@ -88,6 +89,7 @@ backend with a warning; the Fortran backend is the authoritative validation back
 * **[Master simulator specification](docs/MASTER_SIMULATOR_SPEC.md)**
 * **[Canonical simulator contract](docs/CANONICAL_SIMULATOR_CONTRACT.md)**: exact semantics of everything the simulator produces
 * **[Canonical context model](docs/CONTEXT_MODEL.md)**: identity, observations, state, events and relationships for future UNS / historian / KG projections, with the [ISA-95 mapping](docs/ISA95_SIMULATOR_MAPPING.md)
+* **[Unified Namespace (UNS)](docs/UNS.md)**: the ISA-95-based manufacturing information space implemented over MQTT (`python scripts/run_uns.py --start-broker`)
 * [Learning guide](docs/LEARNING_GUIDE.md): 17 levels, from "what is this" to extending it
 * [Worked demo, step by step](docs/06_scenarios/scenario_examples/SCN-COOL-001.md)
 * [The TEP boundary contract](docs/04_coupling/coupling_contract.md)
