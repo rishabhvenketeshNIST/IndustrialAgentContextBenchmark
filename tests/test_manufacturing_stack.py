@@ -559,3 +559,48 @@ def test_simulator_server_commits_the_historian_when_stopped_while_running(tmp_p
     r = HistorianReader(db)
     assert r.coverage(r.current_scope())[-1]["to_t"] >= t_seen
     r.close()
+
+
+def test_simulator_server_records_into_a_directory_that_does_not_exist_yet(tmp_path):
+    """--historian <dir>/<file> works when <dir> does not exist yet (e.g. exports/ on a fresh clone): the
+    directory is created, the recording is used, and it is committed on stop."""
+    from historian.reader import HistorianReader
+    db, port = tmp_path / "new_dir" / "x.sqlite", free_port()
+    assert not db.parent.exists()
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    proc = subprocess.Popen([sys.executable, "run.py", "--no-browser", "--port", str(port), "--historian", str(db),
+                             "--speed", "50"], cwd=ROOT_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, creationflags=flags)
+
+    def call(path, body=None):
+        import urllib.request
+        req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=body,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read())
+    try:
+        assert wait_for(lambda: call("/api/simulation")["status"] == "READY", timeout=120)
+        call("/api/simulation/start", b"{}")
+        assert wait_for(lambda: call("/api/simulation")["clock"]["time_s"] > 30, timeout=60)
+        t_seen = call("/api/simulation")["clock"]["time_s"]
+    finally:
+        proc.send_signal(signal.CTRL_BREAK_EVENT if os.name == "nt" else signal.SIGTERM)
+        proc.wait(60)
+    assert proc.returncode == 0, proc.stdout.read()[-500:]
+    assert db.is_file()
+    r = HistorianReader(db)
+    assert r.coverage(r.current_scope())[-1]["to_t"] >= t_seen
+    r.close()
+
+
+def test_simulator_server_refuses_a_file_that_is_not_a_historian_database(tmp_path):
+    """An existing non-SQLite file as --historian fails cleanly: exit code 1, the '[run] cannot record
+    into ...' message, no traceback, and the file is left untouched."""
+    bad = tmp_path / "notes.txt"
+    bad.write_text("these are notes, not a database\n", encoding="utf-8")
+    r = subprocess.run([sys.executable, "run.py", "--no-browser", "--port", str(free_port()), "--historian", str(bad)],
+                       cwd=ROOT_DIR, capture_output=True, text=True, timeout=180)
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out[-800:]
+    assert "[run] cannot record into" in out and "Traceback" not in out
+    assert bad.read_text(encoding="utf-8") == "these are notes, not a database\n"

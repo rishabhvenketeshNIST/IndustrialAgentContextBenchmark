@@ -77,6 +77,7 @@ class HistorianStore:
 
     def __init__(self, path) -> None:
         self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)     # e.g. exports/ on a fresh clone
         self.db = sqlite3.connect(str(self.path), check_same_thread=False)
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.execute("PRAGMA journal_mode = WAL")

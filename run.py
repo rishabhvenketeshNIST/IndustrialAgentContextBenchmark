@@ -117,11 +117,13 @@ def main() -> None:
     if args.historian:
         # the Historian writer observes this server's own simulation, like the UNS publisher; it never
         # creates or steps a simulation and does not use MQTT
+        import sqlite3
+
         from historian import HistorianError
         from historian.writer import HistorianWriter
         try:
             writer = HistorianWriter(svc, args.historian).attach()
-        except (HistorianError, OSError) as exc:
+        except (HistorianError, OSError, sqlite3.Error) as exc:     # unopenable path, not a database, ...
             print(f"[run] cannot record into {args.historian}: {exc}")
             if publisher is not None:
                 publisher.close()
@@ -148,10 +150,14 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        if publisher is not None:
-            publisher.close()
-        if writer is not None:
-            writer.close()                   # commits everything recorded (graceful stop, Ctrl-C or Ctrl-Break)
+        # the Historian's final commit is local and quick: do it before the UNS publisher, whose close may
+        # wait for MQTT acknowledgements; a failing close must not prevent the other one
+        try:
+            if writer is not None:
+                writer.close()               # commits everything recorded (graceful stop, Ctrl-C or Ctrl-Break)
+        finally:
+            if publisher is not None:
+                publisher.close()
 
 
 def port_free(host: str, port: int) -> bool:
