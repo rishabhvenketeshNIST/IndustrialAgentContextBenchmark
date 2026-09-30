@@ -41,8 +41,8 @@ OperationalProjection   OperationalProjection      projection/operational.py (on
 - **The UNS and the Historian keep their own cursors and change filters.** Neither changes what the
   other records. The UNS still publishes byte for byte what it published before; this is tested.
 
-The **reader** is the query implementation. A read-only HTTP API serves it (below); a UI and the
-integration into the local manufacturing stack will follow.
+The **reader** is the query implementation. A read-only HTTP API serves it (below). The Historian
+also runs inside the local manufacturing stack (below). There is no Historian UI.
 
 ## Quick start
 
@@ -86,6 +86,23 @@ A read-only, localhost service over one file. It provides `/status`, `/scopes`, 
   benchmark evaluator only.
 
 See [HISTORIAN_QUERY_API.md](HISTORIAN_QUERY_API.md).
+
+## In the local manufacturing stack
+
+```bash
+python scripts/run_manufacturing_stack.py --scenario SCN-COOL-001 --speed 10 --start-broker \
+    --historian exports/session.sqlite
+#   simulator UI http://127.0.0.1:8000 · UNS inspector http://127.0.0.1:8050 · Historian API http://127.0.0.1:8060
+```
+
+- **Recording.** The simulator server (`run.py --historian PATH`) attaches the Historian writer to its
+  own service, next to the UNS publisher: one simulation, two observers.
+- **Serving.** The launcher starts the Historian API with current access over the same file.
+- **Following the lifecycle.** Start, pause, resume, reset and completion are recorded as they happen,
+  and a reset starts a new scope in the file.
+- **Stopping.** On Ctrl-C the writer commits and closes before the simulator exits.
+
+See [LOCAL_MANUFACTURING_STACK.md](LOCAL_MANUFACTURING_STACK.md#the-historian-in-the-stack).
 
 ## Scopes
 

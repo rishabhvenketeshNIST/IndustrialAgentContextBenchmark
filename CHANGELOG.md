@@ -4,6 +4,43 @@ Notable changes to this repository. The simulator version is `simulator.__versio
 contract version is `contract.version` in `contract/canonical_contract.yaml`
 (see [contract §23](docs/CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)).
 
+## [Unreleased]: Historian in the local manufacturing stack
+
+**No simulator, UNS, Historian schema or query-semantics change.** Without `--historian`, everything
+behaves as before.
+
+### Added
+
+- **`run.py --historian PATH`:** the server's own `SimulatorService` also gets a `HistorianWriter`
+  observer, next to the UNS publisher. The writer is closed, and so committed, when the server stops,
+  including on Ctrl-C or Ctrl-Break.
+- **`scripts/run_manufacturing_stack.py --historian PATH [--historian-port 8060]`:** passes the file
+  to the simulator server, and starts the read-only Historian API over the same file.
+  - The API is ready when it reports the simulator's scope as current.
+  - Its URL is printed.
+  - It is stopped before the simulator.
+- **`tests/test_manufacturing_stack.py`:** 7 tests.
+  - one simulation engine per scope, with the UNS and the Historian on the same service;
+  - one scope across the UI, UNS, inspector and Historian API;
+  - start, pause, resume, reset and completion propagate to the Historian;
+  - the API reads the file being written;
+  - stopping MQTT leaves the recording intact;
+  - the full 3-hour run with the Historian writer and API attached is equivalent to the baseline
+    (same event log, same final TEP states, the exact same UNS publish calls);
+  - the launcher with `--historian` starts, and stops cleanly with a committed recording.
+  - `run.py` stopped while the simulation runs commits the recording.
+- **Docs:** `docs/LOCAL_MANUFACTURING_STACK.md` and `docs/HISTORIAN.md`.
+
+### Fixed
+
+- **`run.py` now stops gracefully on Ctrl-Break (Windows) and SIGTERM,** so its cleanup runs: the UNS
+  publisher publishes `offline` and the Historian writer commits.
+  - **Before:** uvicorn shut down, then re-raised the signal with the default handler. The process was
+    terminated with exit code 3 before its cleanup. The stack launcher uses Ctrl-Break, so this is how
+    it stops the simulator.
+  - **Effect before the fix:** the UNS relied on its MQTT last will, and up to 60 simulated seconds of
+    Historian data could be lost.
+
 ## [Unreleased]: read-only Historian HTTP API
 
 **No simulator, UNS, schema or run.py change.**

@@ -1,24 +1,27 @@
 #!/usr/bin/env python
-"""Start the local manufacturing stack: MQTT broker, simulator (web UI + UNS publisher), UNS inspector.
+"""Start the local manufacturing stack: MQTT broker, simulator (web UI + UNS publisher [+ Historian
+writer]), UNS inspector [, Historian API].
 
     python scripts/run_manufacturing_stack.py [--scenario SCN-COOL-001] [--speed 10] [--start-broker]
                                               [--port 8000] [--inspector-port 8050]
-                                              [--mqtt-host 127.0.0.1] [--mqtt-port 1883] [--no-browser]
+                                              [--mqtt-host 127.0.0.1] [--mqtt-port 1883]
+                                              [--historian PATH] [--historian-port 8060] [--no-browser]
 
-                    ENTERPRISE SIMULATOR          (run.py --uns: one simulation)
+                    ENTERPRISE SIMULATOR          (run.py --uns [--historian PATH]: one simulation)
                            │
-                 ┌─────────┴─────────┐
-                 ▼                   ▼
-          SIMULATOR WEB UI      UNS PUBLISHER
-                                     │
-                                     ▼
-                                MQTT BROKER
-                                     │
-                                     ▼
-                                UNS INSPECTOR     (scripts/run_inspector.py: MQTT only)
+          ┌────────────────┼─────────────────┐
+          ▼                ▼                 ▼
+   SIMULATOR WEB UI   UNS PUBLISHER    HISTORIAN WRITER      (observers of the same service)
+                           │                 │
+                           ▼                 ▼
+                      MQTT BROKER         SQLite (WAL)
+                           │                 │
+                           ▼                 ▼
+                      UNS INSPECTOR     HISTORIAN API        (read-only; current scope by default)
 
 This script creates no simulation itself: the simulator server (run.py) owns the only one, and its UNS
-publisher follows it; the inspector is an independent MQTT client. Ctrl-C stops everything it
+publisher and Historian writer follow it; the inspector is an independent MQTT client and the
+Historian API an independent reader of the file the writer records. Ctrl-C stops everything it
 started. See docs/LOCAL_MANUFACTURING_STACK.md.
 """
 from __future__ import annotations
@@ -55,6 +58,8 @@ class Stack:
         self.procs: List[subprocess.Popen] = []
         self.sim_url = f"http://127.0.0.1:{args.port}/"
         self.inspector_url = f"http://127.0.0.1:{args.inspector_port}/"
+        self.historian_url = f"http://127.0.0.1:{args.historian_port}/"
+        self.historian = str(Path(args.historian).resolve()) if args.historian else None
 
     def spawn(self, name: str, argv: List[str]) -> subprocess.Popen:
         # Windows: own process group, so Ctrl-C reaches only this script, which then stops the children
@@ -81,7 +86,10 @@ class Stack:
 
     def start(self) -> None:
         a = self.args
-        for port, what in ((a.port, "--port"), (a.inspector_port, "--inspector-port")):
+        ports = [(a.port, "--port"), (a.inspector_port, "--inspector-port")]
+        if self.historian:
+            ports.append((a.historian_port, "--historian-port"))
+        for port, what in ports:
             if port_open(port):
                 raise RuntimeError(f"port {port} is already in use; stop the process holding it or choose {what}")
 
@@ -105,21 +113,32 @@ class Stack:
             sim += ["--speed", str(a.speed)]
         if a.backend:
             sim += ["--backend", a.backend]
+        if self.historian:
+            sim += ["--historian", self.historian]       # the writer observes the same service
         p = self.spawn("simulator", sim)
         self.wait_ready("simulator + UNS publisher", p,
                         lambda: get_json(self.sim_url + "api/uns/status")["uns"].get("connected"), a.timeout)
+        scope = get_json(self.sim_url + "api/uns/status")["operational_scope_id"]
+
+        # the Historian API: a read-only reader of the file the simulator's writer records
+        if self.historian:
+            p = self.spawn("historian API", ["scripts/run_historian_api.py", "--database", self.historian,
+                                             "--port", str(a.historian_port)])
+            self.wait_ready("Historian API", p,
+                            lambda: get_json(self.historian_url + "status")["current_scope"] == scope, a.timeout)
 
         # 4. the inspector: an independent MQTT client
         p = self.spawn("inspector", ["scripts/run_inspector.py", "--no-browser", "--port", str(a.inspector_port),
                                      "--mqtt-host", a.mqtt_host, "--mqtt-port", str(a.mqtt_port),
                                      "--simulator-url", self.sim_url])
-        scope = get_json(self.sim_url + "api/uns/status")["operational_scope_id"]
         self.wait_ready("UNS inspector", p,
                         lambda: get_json(self.inspector_url + "api/status")["operational_scope_id"] == scope, a.timeout)
 
         print(f"[stack] simulator UI   {self.sim_url}   (press Start to run the scenario)")
         print(f"[stack] UNS inspector  {self.inspector_url}")
-        print(f"[stack] operational scope {scope}  (shown by both views)")
+        if self.historian:
+            print(f"[stack] Historian API  {self.historian_url}status   (records into {self.historian}; current scope)")
+        print(f"[stack] operational scope {scope}  (shown by every view)")
         print("[stack] Ctrl-C stops the stack", flush=True)
         if not a.no_browser:
             webbrowser.open(self.sim_url)
@@ -204,6 +223,9 @@ def main() -> int:
     ap.add_argument("--mqtt-host", default="127.0.0.1")
     ap.add_argument("--mqtt-port", type=int, default=1883)
     ap.add_argument("--start-broker", action="store_true", help="start a local Mosquitto (uns/mosquitto.conf)")
+    ap.add_argument("--historian", metavar="PATH", default=None,
+                    help="also record the simulation into this Historian SQLite file and serve it read-only")
+    ap.add_argument("--historian-port", type=int, default=8060, help="Historian API port (default 8060)")
     ap.add_argument("--backend", default=None, choices=["auto", "fortran", "python"])
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--timeout", type=float, default=120.0, help=argparse.SUPPRESS)

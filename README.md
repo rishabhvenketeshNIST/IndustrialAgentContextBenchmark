@@ -62,7 +62,8 @@ python scripts/run_manufacturing_stack.py --scenario SCN-COOL-001 --speed 10 --s
 ```
 
 Both headers show the same operational scope id (`OS-…`), so you can confirm that they show the same
-simulation. Pause, resume and reset in the simulator UI reach the UNS and the inspector. Ctrl-C stops
+simulation. Add `--historian exports/session.sqlite` to also record the simulation into the Historian
+and serve it read-only at http://127.0.0.1:8060. Pause, resume and reset in the simulator UI reach the UNS and the inspector. Ctrl-C stops
 the stack. Details, standalone modes and a side-by-side walkthrough:
 [docs/LOCAL_MANUFACTURING_STACK.md](docs/LOCAL_MANUFACTURING_STACK.md). Local development only: anonymous
 MQTT, no TLS, services on 127.0.0.1.
