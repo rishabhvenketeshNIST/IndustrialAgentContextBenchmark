@@ -1,7 +1,10 @@
-"""Simulator -> UNS (MQTT) synchronisation.
+"""Operational projection -> UNS (MQTT) synchronisation.
 
-``UNSPublisher.sync()`` is called after every simulation step (and after lifecycle commands). It
-reads the simulator only through the operational boundary (``api/operational.py``) and publishes:
+``UNSPublisher.sync()`` is called after every simulation step (and after lifecycle commands). *What* is
+published comes from the transport-neutral operational projection (``projection/operational.py``:
+operational filtering, ISA-95 placement, measurements, state, records, events, lifecycle); this module
+adds only the MQTT transport: topics, envelope, retain, QoS, reconnect and retained-state hygiene.
+It publishes:
 
     meta          retained, QoS 1   static description of an entity (identity, ISA-95 concept, parent,
                                     configuration, measurement leaves)
@@ -24,25 +27,24 @@ The publisher never changes the simulator; it only reads it under the service lo
 from __future__ import annotations
 
 import json
-import math
 import threading
 import time
 from collections import deque
 from datetime import datetime, timezone
-from typing import Any, Deque, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, Optional, Tuple
 
-import numpy as np
 import paho.mqtt.client as mqtt
 
-from api import operational
-from simulator.common import iso
-from simulator.tep import catalog
-from simulator.tep import control_scheme as cs
+from projection.operational import (RECORD_CONTINUOUS, OperationalProjection, StateChangeFilter,
+                                    discrete_projection, load_context_model, load_contract)
+from projection.operational import clean as _clean
 
 from . import DEFAULT_ROOT, SCHEMA
-from .namespace import ROOT_DIR, Namespace, load_context_model
+from .namespace import Namespace
 
-import yaml
+# RECORD_CONTINUOUS and discrete_projection are re-exported for existing callers of uns.publisher
+__all__ = ["UNSPublisher", "encode", "content_of", "wall_clock", "RECORD_CONTINUOUS", "discrete_projection",
+           "QOS_MEASUREMENT", "QOS_STATE", "QOS_EVENT"]
 
 QOS_MEASUREMENT = 0
 QOS_STATE = 1
@@ -50,17 +52,6 @@ QOS_EVENT = 1
 MAX_INFLIGHT = 1000          # client-side QoS 1 window
 MAX_PENDING = 500            # backpressure: unacknowledged QoS 1 messages before publishing waits
 
-# Channel of an entity property, from its semantic class in contract/canonical_contract.yaml.
-MEASUREMENT_CLASSES = {"condition_indicator", "utility_observation", "inventory_quantity", "counter", "availability"}
-META_CLASSES = {"configuration"}
-# Production line (state.production of the production unit)
-PRODUCTION_STATE = ("state", "current_lot", "current_order")
-PRODUCTION_MEASUREMENTS = {"rate_kg_h": "kg/h", "rate_smoothed_kg_h": "kg/h", "total_kg": "kg", "accepted_kg": "kg",
-                           "rejected_kg": "kg", "run_time_s": "s", "down_time_s": "s"}
-RECORD_EXCLUDE = {"alarms": ("value",)}      # the alarm source's current value is its measurement topic
-# Record fields that are continuous quantities although stored as integers (a forecast in seconds).
-# Floats are always continuous.
-RECORD_CONTINUOUS = {"production_orders": ("projected_end",)}
 # Envelope fields that describe a publication rather than its content.
 PUBLICATION_FIELDS = ("simulation_time", "simulation_timestamp", "observed_at")
 
@@ -75,54 +66,9 @@ def wall_clock() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
-def _clean(x: Any) -> Any:
-    if isinstance(x, dict):
-        return {str(k): _clean(v) for k, v in x.items()}
-    if isinstance(x, (list, tuple)):
-        return [_clean(v) for v in x]
-    if isinstance(x, (np.floating, float)):
-        f = float(x)
-        return None if math.isnan(f) or math.isinf(f) else f
-    if isinstance(x, (np.integer,)):
-        return int(x)
-    if isinstance(x, np.bool_):
-        return bool(x)
-    if isinstance(x, np.ndarray):
-        return _clean(x.tolist())
-    return x
-
-
 def encode(payload: dict) -> str:
     """Canonical JSON: sorted keys, no whitespace, NaN -> null. Identical inputs give identical bytes."""
     return json.dumps(_clean(payload), sort_keys=True, separators=(",", ":"), allow_nan=False)
-
-
-def _snap(x: Any) -> Any:
-    """Structural copy of containers, so a later in-place mutation cannot hide a change."""
-    if isinstance(x, dict):
-        return {k: _snap(v) for k, v in x.items()}
-    if isinstance(x, (list, tuple)):
-        return [_snap(v) for v in x]
-    return x
-
-
-def discrete_projection(body: dict, collection: Optional[str] = None) -> Any:
-    """The discrete content of a state body: floats and declared continuous record fields replaced by
-    a marker. Used to decide when a record's state must be published at once."""
-    d = _discrete(body)
-    for k in RECORD_CONTINUOUS.get(collection, ()):
-        if k in d.get("state", {}):
-            d["state"][k] = "#"
-    return d
-
-
-def _discrete(x: Any) -> Any:
-    """The payload with every float replaced by a marker."""
-    if isinstance(x, dict):
-        return {k: _discrete(v) for k, v in x.items()}
-    if isinstance(x, list):
-        return [_discrete(v) for v in x]
-    return "#" if isinstance(x, float) else x
 
 
 class UNSPublisher:
@@ -137,17 +83,17 @@ class UNSPublisher:
         self.client_id = client_id
         self.keepalive = keepalive
         self.cm = load_context_model()
-        self.contract = yaml.safe_load((ROOT_DIR / "contract" / "canonical_contract.yaml").read_text(encoding="utf-8"))
+        self.contract = load_contract()
+        self.projection: Optional[OperationalProjection] = None
         self._client: Optional[mqtt.Client] = None
         self._connected = threading.Event()
         self._resync = False
         self._engine = None
         self.ns: Optional[Namespace] = None
-        self._ops: Optional[operational.OperationalEventView] = None
         self._events_done = 0
         self.retained: Dict[str, str] = {}        # topic -> payload currently desired as retained
         self._sent_retained: Dict[str, str] = {}  # topic -> payload last sent as retained
-        self._last_state: Dict[str, Tuple[Any, str]] = {}
+        self._states = StateChangeFilter()
         self._pending_deletes: set = set()
         self._stale: set = set()
         self._found: Dict[str, str] = {}          # retained topic -> payload found on the broker at connect
@@ -308,10 +254,10 @@ class UNSPublisher:
         return encode(payload)
 
     def _envelope(self, cid: str, kind: str, **fields) -> dict:
-        eng = self._engine
+        proj = self.projection
         d = {"schema": SCHEMA, "kind": kind, "entity_id": cid, "entity_type": cid.split(":", 1)[0],
              "operational_scope_id": self._scope_id,
-             "simulation_time": eng.clock.time_s, "simulation_timestamp": eng.clock.timestamp()}
+             "simulation_time": proj.simulation_time(), "simulation_timestamp": proj.simulation_timestamp()}
         d.update(fields)
         return d
 
@@ -342,7 +288,8 @@ class UNSPublisher:
         old = set(self.retained) - {getattr(self, "_status_topic", None)}
         attach_mid_run = self._engine is None and eng.clock.time_s > 0
         self._engine = eng
-        self._scope_id = operational.operational_scope_id(eng)
+        self.projection = OperationalProjection(eng, self.cm, self.contract)
+        self._scope_id = self.projection.scope_id
         # retained messages of this very scope (a publisher restart): reuse, never re-date
         self._adopt = {}
         for topic, raw in self._found.items():
@@ -354,20 +301,16 @@ class UNSPublisher:
                 self._adopt[topic] = d
         self._found = {}
         self._keep: set = set()
-        self.ns = Namespace(eng, self.cm, self.root)
-        self._ops = operational.OperationalEventView(eng.bus)
+        self.ns = Namespace(self.projection.placement, root=self.root)
         self._events_done = 0
-        self._last_state = {}
-        self._last_raw: Dict[str, dict] = {}
+        self._states = StateChangeFilter()
         self._meta_content: Dict[str, Any] = {}
-        self._chan_cache: Dict[Tuple[str, str], str] = {}
         self._last_tick = None
         self._lifecycle = None
         if attach_mid_run:
             # a publisher (re)started while the simulation runs publishes the current state, not a replay
             # of past events: history belongs to the historian, not to the live namespace
-            self._ops.update()
-            self._events_done = len(self._ops._records)
+            self._events_done = self.projection.event_count()
         self._publish_events()
         self.retained = {k: v for k, v in self.retained.items() if k == getattr(self, "_status_topic", None)}
         self._publish_meta()
@@ -409,189 +352,40 @@ class UNSPublisher:
 
     # ------------------------------------------------------------------ meta
     def _publish_meta(self) -> None:
-        ns, eng, st = self.ns, self._engine, self._engine.state
+        ns = self.ns
         for cid in ns.entity_ids():
-            etype, native = cid.split(":", 1)
-            meta = {"native_id": native, "isa95": ns.isa95_of(cid), "parent": ns.parent(cid)}
-            if etype == "product":
-                p = eng.config["production"]["products"][native]
-                meta.update({"name": p.get("name"), "unit": p.get("unit"), "yields_material": f"material:{p['material']}",
-                             "bill_of_materials": {f"material:{m}": q for m, q in p.get("bill_of_materials", {}).items()}})
-            else:
-                rec = st.entity(native)
-                meta["name"] = rec.name
-                if native in eng.hierarchy:
-                    el = eng.hierarchy.get(native)
-                    meta.update({"level": el.level.value, "class": el.equipment_class, "origin": el.origin.value,
-                                 "description": el.description, "attributes": dict(el.attributes),
-                                 "children": [ns.entity_canonical_id(c) for c in el.children]})
-                if etype == "utility":
-                    meta.update({"utility_type": rec.meta.get("utility_type"),
-                                 "supplied_by": ns.entity_canonical_id(rec.meta["supplied_by"]),
-                                 "serves": [ns.entity_canonical_id(x) for x in rec.meta.get("serves", [])]})
-                if etype == "material":
-                    meta.update({"attributes": rec.meta.get("attributes", {}), "specification": rec.meta.get("specification", {}),
-                                 "attribute_units": rec.meta.get("attribute_units", {})})
-                meta["configuration"] = {k: v for k, v in operational.properties(rec).items()
-                                         if self._channel(rec, k) == "meta"}
-                meta["measurements"] = sorted(self._measurements_of(cid))
+            meta = self.projection.meta(cid)
             topic = ns.topic(cid, "meta")
             content = _clean(meta)
             if self._meta_content.get(topic) != content:     # static, but measurement leaves can appear later
                 self._meta_content[topic] = content
                 self._retain(topic, self._envelope(cid, "meta", **meta), QOS_STATE, "meta")
 
-    # ------------------------------------------------------------------ property routing
-    def _scope(self, rec) -> Optional[str]:
-        if rec.kind == "utility":
-            return "utility"
-        if rec.id == self._engine.config["quality"].get("laboratory"):
-            return "laboratory"
-        if rec.kind == "material":
-            return "material"
-        if rec.meta.get("level") == "StorageUnit":
-            return "storage"
-        if rec.meta.get("asset"):
-            return "asset"
-        return None
-
-    def _channel(self, rec, prop: str) -> str:
-        """meta | state | measurement | bound (published as a process variable) | loop"""
-        key = (rec.id, prop)
-        if key in self._chan_cache:
-            return self._chan_cache[key]
-        self._chan_cache[key] = ch = self._route(rec, prop)
-        return ch
-
-    def _route(self, rec, prop: str) -> str:
-        m = self._engine.mapping
-        if (rec.id, prop) in {(b.equipment_id, b.property) for b in list(m.xmeas.values()) + list(m.xmv.values())}:
-            return "bound"
-        if rec.id in m.loops.values():
-            return "loop"
-        scope = self._scope(rec)
-        if scope:
-            table = self.contract["properties"][scope]
-            spec = table.get(prop)
-            if spec is None:
-                spec = next((v for k, v in table.items() if "*" in k and prop.startswith(k.rstrip("*"))), None)
-            if spec is None and scope == "laboratory":
-                spec = {"class": "quality_result"}
-            cls = (spec or {}).get("class")
-            if cls in META_CLASSES:
-                return "meta"
-            if cls in MEASUREMENT_CLASSES:
-                return "measurement"
-        return "state"
-
-    def _measurements_of(self, cid: str) -> List[str]:
-        return [leaf for leaf, _ in self._entity_measurements(cid)]
-
-    def _entity_measurements(self, cid: str) -> List[Tuple[str, dict]]:
-        """(leaf, fields) for every measurement published under an entity node."""
-        st, m = self._engine.state, self._engine.mapping
-        etype, native = cid.split(":", 1)
-        out: List[Tuple[str, dict]] = []
-        p = st.process
-        for idx, b in sorted(m.xmeas.items()):
-            if b.equipment_id == native:
-                v = f"measurement:XMEAS({idx})"
-                out.append((v, {"variable": v, "value": float(p.xmeas[idx - 1]), "unit": catalog.XMEAS[idx - 1].unit,
-                                "quality": p.quality[idx - 1], "property": b.property, "tag": b.tag}))
-        for idx, b in sorted(m.xmv.items()):
-            if b.equipment_id == native:
-                v = f"manipulated_variable:XMV({idx})"
-                out.append((v, {"variable": v, "value": float(p.xmv[idx - 1]), "unit": "%", "property": b.property}))
-        for lid, cm in sorted(m.loops.items()):
-            if cm != native:
-                continue
-            loop = cs.LOOPS[lid]
-            row = next(r for r in p.loops if r["loop_id"] == lid)
-            pv_unit = catalog.XMEAS[loop.pv - 1].unit
-            if loop.output_kind == "XMV":
-                out_unit, target = "%", f"manipulated_variable:XMV({loop.output_index})"
-            else:
-                slave = cs.loop_for_setpoint(loop.output_index)
-                out_unit = catalog.XMEAS[cs.LOOPS[slave].pv - 1].unit
-                target = f"setpoint of control_module:{m.loops[slave]}"
-            common = {"loop": lid, "loop_tag": loop.tag, "pv": f"measurement:XMEAS({loop.pv})"}
-            out.append(("setpoint", dict(common, variable="setpoint", value=row["setpoint"], unit=pv_unit)))
-            out.append(("controller_output", dict(common, variable="controller_output", value=row["output"],
-                                                  unit=out_unit, output=target)))
-        if etype != "product" and st.has_entity(native):
-            rec = st.entity(native)
-            for prop, val in sorted(operational.properties(rec).items()):
-                if self._channel(rec, prop) == "measurement" and isinstance(val, (int, float, np.number)) \
-                        and not isinstance(val, bool):
-                    out.append((prop, {"variable": prop, "value": val, "unit": rec.units.get(prop, "")}))
-        if cid == self.ns.production_unit:
-            for k, unit in PRODUCTION_MEASUREMENTS.items():
-                out.append((k, {"variable": k, "value": st.production.get(k), "unit": unit}))
-        return out
-
     # ------------------------------------------------------------------ states
-    def _entity_state(self, cid: str) -> Optional[dict]:
-        etype, native = cid.split(":", 1)
-        st = self._engine.state
-        if etype == "product":
-            return None
-        rec = st.entity(native)
-        props = operational.properties(rec)
-        state = {k: v for k, v in props.items() if self._channel(rec, k) in ("state",)}
-        if native in self._engine.mapping.loops.values():
-            state.update({k: props[k] for k in ("mode", "saturated") if k in props})
-        if cid == self.ns.production_unit:
-            state.update({f"line_{k}" if k == "state" else k: st.production.get(k) for k in PRODUCTION_STATE})
-        if not state:
-            return None
-        units = {k: rec.units[k] for k in state if k in rec.units}
-        return {"state": state, "units": units}
-
     def _publish_states(self, tick: bool) -> None:
-        ns, st = self.ns, self._engine.state
+        ns, proj = self.ns, self.projection
         for cid in ns.entity_ids():
-            s = self._entity_state(cid)
+            s = proj.entity_state(cid)
             if s is not None:
                 self._state(cid, ns.topic(cid, "state"), s, tick, continuous=False)
-        for coll in sorted(ns.collection_type):
-            for rid, rec in list(st.collection(coll).items()):
-                cid = ns.register_record(coll, rec, rid)
-                d = rec.to_dict() if hasattr(rec, "to_dict") else dict(rec)
-                for k in RECORD_EXCLUDE.get(coll, ()):
-                    d.pop(k, None)
-                self._state(cid, ns.topic(cid, "state"), {"state": d}, tick, continuous=coll)
+        for coll, cid, fields in proj.records():
+            self._state(cid, ns.topic(cid, "state"), fields, tick, continuous=coll)
 
     def _state(self, cid: str, topic: str, fields: dict, tick: bool, continuous) -> None:
-        """Entity state is discrete: published on any change. Record state also holds continuous
-        quantities (lot and stock kilograms): a change of those alone waits for the sampling period."""
-        if self._last_raw.get(topic) == fields:
-            return                          # fast path: identical to the last handled observation
-        body = _clean(fields)
-        disc = discrete_projection(body, continuous) if continuous else body
-        last = self._last_state.get(topic)
-        if last is None and topic in self._adopt:
-            # a restarted publisher continues from the same-scope retained state, under the same rules
-            prev = {k: self._adopt[topic].get(k) for k in fields}
-            last = self._last_state[topic] = (discrete_projection(prev, continuous) if continuous else prev, prev)
+        """Publish a state observation when the projection's report-by-exception rule says so. A
+        restarted publisher continues from the same-scope retained state it adopted (MQTT-specific)."""
+        seeded = topic in self._adopt and not self._states.known(topic)
+        if seeded:
             self._keep.add(topic)           # stays retained as it is unless republished below
-        if last is not None:
-            if last[0] == disc and last[1] != body and not tick:
-                return                      # only continuous quantities changed: wait for the sampling period
-                                            # (not recorded in _last_raw, so the next tick publishes it)
-            if last[1] == body:
-                self._last_raw[topic] = _snap(fields)
-                return                      # nothing changed
-        self._last_raw[topic] = _snap(fields)
-        self._last_state[topic] = (disc, body)
-        self._retain(topic, self._envelope(cid, "state", **fields), QOS_STATE, "state")
+        if self._states.report(topic, fields, tick, continuous, baseline=self._adopt[topic] if seeded else None):
+            self._retain(topic, self._envelope(cid, "state", **fields), QOS_STATE, "state")
 
     # ------------------------------------------------------------------ measurements
     def _publish_measurements(self) -> None:
         ns = self.ns
         for cid in ns.entity_ids():
-            for leaf, fields in self._entity_measurements(cid):
-                self._retain(ns.topic(cid, "measurement", leaf),
-                             self._envelope(cid, "measurement", source="simulator", **fields),
+            for leaf, fields in self.projection.measurements(cid):
+                self._retain(ns.topic(cid, "measurement", leaf), self._envelope(cid, "measurement", **fields),
                              QOS_MEASUREMENT, "measurement")
 
     # ------------------------------------------------------------------ lifecycle and events
@@ -599,33 +393,18 @@ class UNSPublisher:
         status = self._engine.status
         if status != self._lifecycle:
             self._lifecycle = status
-            eng = self._engine
             self._retain(self.ns.topic(self.ns.site, "lifecycle"),
-                         self._envelope(self.ns.site, "lifecycle", status=status,
-                                        simulation_start=iso(eng.clock.start), duration_seconds=eng.duration_s),
+                         self._envelope(self.ns.site, "lifecycle", **self.projection.lifecycle()),
                          QOS_STATE, "lifecycle")
 
-    def _event_entity(self, target: Optional[str]) -> str:
-        ns = self.ns
-        if target:
-            cid = ns.entity_canonical_id(target)
-            if cid:
-                return cid
-            st = self._engine.state
-            for coll in sorted(ns.collection_type):
-                if target in st.collection(coll):
-                    return ns.register_record(coll, st.collection(coll)[target], target)
-        return ns.site
-
     def _publish_events(self) -> None:
-        self._ops.update()
-        records = self._ops._records
-        for r in records[self._events_done:]:
-            cid = self._event_entity(r["target"])
-            payload = self._envelope(cid, "event", event_id=r["event_id"], event_type=r["type"], source=r["source"],
-                                     severity=r["severity"], payload=r["payload"], causation_id=r["causation_id"],
-                                     correlation_id=r["correlation_id"])
+        events = self.projection.events_since(self._events_done)
+        for ev in events:
+            fields = dict(ev)
+            cid = fields.pop("entity_id")
+            happened = fields.pop("simulation_time"), fields.pop("simulation_timestamp")
+            payload = self._envelope(cid, "event", **fields)
             # an event carries the simulator time at which it happened, not the time it was published
-            payload["simulation_time"], payload["simulation_timestamp"] = r["simulation_time"], r["timestamp"]
-            self._publish(self.ns.topic(cid, "event", r["type"]), self._stamp(payload), QOS_EVENT, False, "event")
-        self._events_done = len(records)
+            payload["simulation_time"], payload["simulation_timestamp"] = happened
+            self._publish(self.ns.topic(cid, "event", ev["event_type"]), self._stamp(payload), QOS_EVENT, False, "event")
+        self._events_done += len(events)

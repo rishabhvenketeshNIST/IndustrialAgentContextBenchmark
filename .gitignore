@@ -3,6 +3,11 @@ __pycache__/
 .pytest_cache/
 exports/
 
+# Historian session files (scripts/record_history.py)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
 # Local environments and logs
 .venv/
 venv/

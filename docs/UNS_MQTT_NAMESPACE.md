@@ -2,7 +2,8 @@
 
 This document describes the topic tree of the Unified Namespace ([UNS.md](UNS.md)). Every example below
 is a real topic that the publisher produces for this site. The tree is built by
-[uns/namespace.py](../uns/namespace.py). It is derived from the simulator's ISA-95 hierarchy
+[uns/namespace.py](../uns/namespace.py) over the ISA-95 placement of the operational projection
+([projection/operational.py](../projection/operational.py)). It is derived from the simulator's ISA-95 hierarchy
 ([configs/site.yaml](../configs/site.yaml)) and the canonical context model
 ([contract/context_model.yaml](../contract/context_model.yaml)), and no hierarchy is written down in the
 UNS code.

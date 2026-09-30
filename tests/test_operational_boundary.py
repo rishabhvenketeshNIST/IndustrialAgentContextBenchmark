@@ -232,3 +232,43 @@ def test_alarm_sources_are_operational(demo):
         m = re.fullmatch(r"([A-Z0-9-]+)\.(\w+)", a.definition.source)
         if m and m.group(1) in st.entities:
             assert m.group(2) not in hidden_properties(st.entities[m.group(1)]), a.alarm_id
+
+
+def test_event_records_accessor_is_the_operational_stream_and_read_only():
+    """OperationalEventView.records() returns exactly the operational records the view holds (same
+    contents, order and ids as the internal list and as query()), never an evaluator-only event, and
+    copies that cannot change the view. OperationalProjection built on it yields the same events as when
+    it read the internal list."""
+    from api.operational import PAYLOAD_REDACTIONS, WITHHELD_EVENT_TYPES
+    from projection.operational import OperationalProjection
+    from simulator.events import Visibility
+
+    eng = SimulationEngine(ScenarioStore().load("SCN-COOL-001"), base_config())
+    eng.run_until(T_FIRST_SYMPTOM + 200)                    # past the hidden fault start and the first symptom
+    view = OperationalEventView(eng.bus)
+    records = view.records()
+    assert isinstance(records, tuple) and records and list(records) == view._records     # same data, same order
+    assert records == tuple(view.query())
+    assert view.records(10) == tuple(view._records[10:])
+    # evaluator-only events exist in the log, but none is reachable through the accessor
+    hidden = [ev for ev in eng.bus.log if ev.visibility != Visibility.OPERATIONAL or ev.type in WITHHELD_EVENT_TYPES]
+    assert hidden
+    assert all(re.fullmatch(r"(OE|LC)-\d{7}", r["event_id"]) for r in records)
+    assert not {r["type"] for r in records} & {t.value for t in WITHHELD_EVENT_TYPES}
+    assert not any(r["type"].startswith("FAULT_") for r in records)
+    for r in records:
+        assert not set(r["payload"]) & set(PAYLOAD_REDACTIONS.get(r["type"], ()))
+    # read-only from the caller's side
+    records[0]["payload"]["tampered"] = True
+    records[0]["event_id"] = "X"
+    assert "tampered" not in view._records[0]["payload"] and view._records[0]["event_id"] != "X"
+    assert view.records() == tuple(view._records)
+    # the projection's events are what it produced from the internal list before
+    proj = OperationalProjection(eng)
+    expected = [{"entity_id": proj.event_entity(r["target"]), "event_id": r["event_id"], "event_type": r["type"],
+                 "source": r["source"], "severity": r["severity"], "payload": r["payload"],
+                 "causation_id": r["causation_id"], "correlation_id": r["correlation_id"],
+                 "simulation_time": r["simulation_time"], "simulation_timestamp": r["timestamp"]}
+                for r in view._records]
+    assert proj.events_since(0) == expected and proj.event_count() == len(view._records)
+    assert proj.events_since(5) == expected[5:]

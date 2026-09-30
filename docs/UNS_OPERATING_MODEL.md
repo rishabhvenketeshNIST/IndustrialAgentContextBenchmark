@@ -17,8 +17,11 @@ operational boundary (api/operational.py)                      what an operator 
 canonical context model (contract/context_model.yaml)          what it means
       │  entity types, canonical ids, ISA-95 mappings, property classes, operational collections
       ▼
-UNS publisher (uns/publisher.py + uns/namespace.py)            MQTT projection
-      │  topics from the ISA-95 hierarchy, canonical JSON payloads
+operational projection (projection/operational.py)             transport-neutral, shared with the Historian
+      │  ISA-95 placement, measurements, state, records, events, lifecycle
+      ▼
+UNS publisher (uns/publisher.py + uns/namespace.py)            MQTT transport
+      │  topics from the ISA-95 placement, canonical JSON payloads
       ▼
 MQTT broker (Eclipse Mosquitto)                                 transport, retained state
       │

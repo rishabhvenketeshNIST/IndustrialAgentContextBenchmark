@@ -22,10 +22,11 @@ The rules follow where information originates (docs/CANONICAL_SIMULATOR_CONTRACT
 """
 from __future__ import annotations
 
+import copy
 import secrets
 import threading
 import weakref
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from simulator.events import EventType, Visibility
 
@@ -187,6 +188,12 @@ class OperationalEventView:
         excess = len(self._records) - len(log)
         if excess > 0:
             del self._records[:excess]
+
+    def records(self, start: int = 0) -> Tuple[dict, ...]:
+        """The operational event records from position ``start`` on, in stream order (after
+        ``update()``). Each record is a copy: callers cannot change the view."""
+        self.update()
+        return tuple(copy.deepcopy(r) for r in self._records[start:])
 
     def operational_id(self, internal_id: str) -> Optional[str]:
         self.update()

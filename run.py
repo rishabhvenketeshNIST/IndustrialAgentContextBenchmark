@@ -7,9 +7,11 @@
 3. starts the API + web UI with the scenario loaded (READY; press Start to run it) and opens
    the browser.
 
-With ``--uns`` the same server also publishes its simulation to the MQTT Unified Namespace (one
-simulation for UI, API and UNS). The whole local stack, broker and inspector included, is started by
-``python scripts/run_manufacturing_stack.py`` (docs/LOCAL_MANUFACTURING_STACK.md).
+With ``--uns`` the same server also publishes its simulation to the MQTT Unified Namespace, and with
+``--historian PATH`` it also records it into a Historian SQLite file: one simulation for UI, API, UNS and
+Historian, whose writer is an observer of this server's service. The whole local stack, broker,
+inspector and Historian API included, is started by ``python scripts/run_manufacturing_stack.py``
+(docs/LOCAL_MANUFACTURING_STACK.md).
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ import argparse
 import importlib
 import logging
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -63,6 +66,9 @@ def main() -> None:
     uns.add_argument("--mqtt-host", default="127.0.0.1")
     uns.add_argument("--mqtt-port", type=int, default=1883)
     uns.add_argument("--inspector-url", default=None, help="UNS inspector URL shown as a link in the UI")
+    hist = ap.add_argument_group("Historian (docs/HISTORIAN.md)")
+    hist.add_argument("--historian", metavar="PATH", default=None,
+                      help="also record this server's simulation into a Historian SQLite file (created or appended to)")
     args = ap.parse_args()
 
     # Fail fast, before building the simulation, if the web port is taken (uvicorn would otherwise
@@ -107,17 +113,51 @@ def main() -> None:
             sys.exit(1)
         app.state.uns = publisher
         print(f"[run] UNS: mqtt://{args.mqtt_host}:{args.mqtt_port}/uns/v1/#  (same simulation as the UI)")
+    writer = None
+    if args.historian:
+        # the Historian writer observes this server's own simulation, like the UNS publisher; it never
+        # creates or steps a simulation and does not use MQTT
+        import sqlite3
+
+        from historian import HistorianError
+        from historian.writer import HistorianWriter
+        try:
+            writer = HistorianWriter(svc, args.historian).attach()
+        except (HistorianError, OSError, sqlite3.Error) as exc:     # unopenable path, not a database, ...
+            print(f"[run] cannot record into {args.historian}: {exc}")
+            if publisher is not None:
+                publisher.close()
+            svc.shutdown()
+            sys.exit(1)
+        print(f"[run] Historian: recording into {args.historian}  (same simulation as the UI)")
     if args.inspector_url:
         app.state.links["uns_inspector"] = args.inspector_url
     url = f"http://{args.host}:{args.port}/"
     print(f"[run] UI:  {url}\n[run] API: {url}docs", flush=True)
     if not args.no_browser:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+    # uvicorn stops gracefully on SIGTERM/SIGBREAK (Ctrl-Break, as the stack launcher sends on Windows) and
+    # then re-raises the signal with the previous handler; make that handler a KeyboardInterrupt so the
+    # process leaves through the finally below (publisher and Historian writer closed, nothing lost)
+    # instead of being terminated by the default handler.
+    def _stop(signum, frame):
+        raise KeyboardInterrupt
+    for name in ("SIGTERM", "SIGBREAK"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), _stop)
     try:
         uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    except KeyboardInterrupt:
+        pass
     finally:
-        if publisher is not None:
-            publisher.close()
+        # the Historian's final commit is local and quick: do it before the UNS publisher, whose close may
+        # wait for MQTT acknowledgements; a failing close must not prevent the other one
+        try:
+            if writer is not None:
+                writer.close()               # commits everything recorded (graceful stop, Ctrl-C or Ctrl-Break)
+        finally:
+            if publisher is not None:
+                publisher.close()
 
 
 def port_free(host: str, port: int) -> bool:

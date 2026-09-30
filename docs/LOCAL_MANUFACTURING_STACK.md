@@ -1,22 +1,22 @@
 # Local manufacturing stack
 
 This page explains how to run the enterprise simulator, its web UI, the MQTT Unified Namespace (UNS)
-and the UNS inspector together, as **one simulation seen through two independent views**. It is a
-local benchmark and development stack; nothing here is a production deployment.
+and the UNS inspector, and optionally the Historian and its read-only API, together as **one simulation
+seen through independent views**. It is a local benchmark and development stack; nothing here is a
+production deployment.
 
 ```
-                    ENTERPRISE SIMULATOR          run.py --uns: the only simulation (one engine)
+                    ENTERPRISE SIMULATOR          run.py --uns [--historian PATH]: the only simulation
                            │
-                 ┌─────────┴─────────┐
-                 │                   │
-                 ▼                   ▼
-          SIMULATOR WEB UI      UNS PUBLISHER     both follow the same SimulatorService
-                                     │
-                                     ▼
-                                MQTT BROKER       Eclipse Mosquitto (uns/mosquitto.conf)
-                                     │
-                                     ▼
-                                UNS INSPECTOR     scripts/run_inspector.py: an MQTT client only
+          ┌────────────────┼──────────────────┐
+          ▼                ▼                  ▼
+   SIMULATOR WEB UI   UNS PUBLISHER     HISTORIAN WRITER    all follow the same SimulatorService
+                           │                  │            (the Historian only with --historian)
+                           ▼                  ▼
+                      MQTT BROKER        SQLite (WAL)       Eclipse Mosquitto (uns/mosquitto.conf)
+                           │                  │
+                           ▼                  ▼
+                      UNS INSPECTOR     HISTORIAN API       an MQTT client only; a read-only reader
 ```
 
 - **The simulator is the source of truth.** The web server (`run.py`) owns one `SimulatorService` and
@@ -30,6 +30,12 @@ local benchmark and development stack; nothing here is a production deployment.
 - **The UNS inspector** is a separate process and an ordinary MQTT client. It shows only what the
   broker delivers, and never calls the simulator API. It shows what an operational consumer, such as
   a future agent, could see.
+- **The Historian writer** (with `--historian PATH`) is a second observer of the same service. It
+  records the operational projection into the SQLite file, never creates or steps a simulation, and
+  does not use MQTT ([HISTORIAN.md](HISTORIAN.md)).
+- **The Historian API** is a separate, read-only process over that same file
+  ([HISTORIAN_QUERY_API.md](HISTORIAN_QUERY_API.md)). It serves the current scope only; evaluator
+  access is never started by the stack.
 
 The two views are deliberately different. Comparing them shows what the operational boundary removes.
 
@@ -44,24 +50,41 @@ python scripts/run_manufacturing_stack.py --scenario SCN-COOL-001 --speed 10 --s
 | simulator web UI and API | http://127.0.0.1:8000 (API docs at `/docs`) |
 | UNS inspector | http://127.0.0.1:8050 |
 | MQTT broker | `mqtt://127.0.0.1:1883`, topics `uns/v1/#` |
+| Historian API (with `--historian PATH`) | http://127.0.0.1:8060/status (read-only, current scope) |
+
+**With the Historian:**
+
+```bash
+python scripts/run_manufacturing_stack.py --scenario SCN-COOL-001 --speed 10 --start-broker \
+    --historian exports/session.sqlite
+```
+
+The simulator records into `exports/session.sqlite`, and the Historian API serves that same file.
+The file is created, or appended to with a new scope. `exports/` and `*.sqlite` are ignored by git.
+Without `--historian`, the stack is exactly as before.
 
 The launcher starts, in order:
 
 1. **the broker** (`--start-broker`, the repository configuration). Without that flag it uses a broker
    already listening on `--mqtt-host`/`--mqtt-port`, and stops with a clear message if there is none.
-2. **the simulator server** with its UNS publisher: `python run.py --uns ...`;
-3. **the inspector**: `python scripts/run_inspector.py ...`.
+2. **the simulator server** with its UNS publisher, and with `--historian` its Historian writer:
+   `python run.py --uns [--historian PATH] ...`;
+3. with `--historian`, **the Historian API** over the same file:
+   `python scripts/run_historian_api.py --database PATH ...`;
+4. **the inspector**: `python scripts/run_inspector.py ...`.
 
 It waits for each one to be ready, not for a fixed time:
 
 - the simulator is ready when `/api/uns/status` reports the publisher connected;
+- the Historian API is ready when its `/status` reports the simulator's operational scope as current;
 - the inspector is ready when it reports the same operational scope as the simulator.
 
 It then prints the URLs and the scope id and opens both pages (unless `--no-browser`). The scenario is
 loaded in READY state: press **▶ Start** in the simulator UI.
 
-**Ctrl-C stops everything it started:** the inspector, then the simulator (the publisher's MQTT last
-will marks the UNS offline), then the broker. If any part exits unexpectedly, the launcher reports it
+**Ctrl-C stops everything it started:** the inspector, then the Historian API, then the simulator,
+then the broker. When the simulator stops, the publisher's MQTT last will marks the UNS offline, and
+the Historian writer commits and closes the file, so nothing recorded is lost. If any part exits unexpectedly, the launcher reports it
 and stops the rest.
 
 **No orphaned processes.**
@@ -82,6 +105,8 @@ Options:
 | `--inspector-port` | 8050 | inspector port |
 | `--mqtt-host`, `--mqtt-port` | `127.0.0.1`, 1883 | broker address |
 | `--start-broker` | off | start a local Mosquitto from `uns/mosquitto.conf` |
+| `--historian PATH` | off | also record into this Historian SQLite file and serve it read-only |
+| `--historian-port` | 8060 | Historian API port |
 | `--backend` | auto | TEP backend, passed to `run.py` |
 | `--no-browser` | off | do not open the pages |
 
@@ -162,6 +187,31 @@ MQTT.
 
    Press **Start**, and all three views are RUNNING in the new scope.
 
+## The Historian in the stack
+
+**Every view shows the same scope.** The simulator UI (`/api/uns/status`), the UNS inspector (from
+the retained lifecycle) and the Historian API (`/status` → `current_scope`) all report the same
+`operational_scope_id`.
+
+| Action | Historian |
+|---|---|
+| ▶ Start, ❚❚ Pause, ▶ Resume, completion | recorded as `lifecycle_status` (RUNNING, PAUSED, RUNNING, COMPLETED) and the lifecycle events |
+| ⟲ Reset, or Load | a new scope in the same file. The API's current scope follows it, and the previous scope is kept, readable with evaluator access only |
+| MQTT broker stopped or restarted | nothing: the Historian does not use MQTT |
+
+- **Current versus evaluator access.** The stack's Historian API always runs with the default
+  `current` access. For the evaluator, start a separate service on the file:
+
+  ```bash
+  python scripts/run_historian_api.py --database exports/session.sqlite --access evaluator --port 8061
+  ```
+
+  Do not give that service to an agent.
+- **One simulation.** A test counts the simulation engines created while the stack runs: one per
+  scope. The UNS publisher and the Historian writer both follow that engine.
+- **Observational only.** A full 3-hour run with the Historian writer and API attached has the same
+  event log, the same final TEP states and exactly the same UNS publish calls as a run without them.
+
 ## Standalone operation
 
 Every part still runs on its own:
@@ -172,6 +222,9 @@ python run.py                                                    # simulator UI 
 python run.py --uns --mqtt-port 1883                             # simulator UI publishing to the UNS
 python scripts/run_uns.py --scenario SCN-COOL-001 --speed 10     # UNS without the web server
 python scripts/run_inspector.py --mqtt-port 1883                 # inspector against any UNS broker
+python run.py --historian exports/session.sqlite                 # simulator UI recording a Historian file
+python scripts/record_history.py --db exports/run.sqlite         # headless recording (its own simulation)
+python scripts/run_historian_api.py --database exports/run.sqlite  # read-only API over any Historian file
 ```
 
 `scripts/run_uns.py` creates and steps its own simulation, with no web server. **Do not combine it with

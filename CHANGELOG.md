@@ -4,6 +4,139 @@ Notable changes to this repository. The simulator version is `simulator.__versio
 contract version is `contract.version` in `contract/canonical_contract.yaml`
 (see [contract §23](docs/CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)).
 
+## [Unreleased]: Historian in the local manufacturing stack
+
+**No simulator, UNS, Historian schema or query-semantics change.** Without `--historian`, everything
+behaves as before.
+
+### Added
+
+- **`run.py --historian PATH`:** the server's own `SimulatorService` also gets a `HistorianWriter`
+  observer, next to the UNS publisher. The writer is closed, and so committed, when the server stops,
+  including on Ctrl-C or Ctrl-Break.
+- **`scripts/run_manufacturing_stack.py --historian PATH [--historian-port 8060]`:** passes the file
+  to the simulator server, and starts the read-only Historian API over the same file.
+  - The API is ready when it reports the simulator's scope as current.
+  - Its URL is printed.
+  - It is stopped before the simulator.
+- **`tests/test_manufacturing_stack.py`:** 7 tests.
+  - one simulation engine per scope, with the UNS and the Historian on the same service;
+  - one scope across the UI, UNS, inspector and Historian API;
+  - start, pause, resume, reset and completion propagate to the Historian;
+  - the API reads the file being written;
+  - stopping MQTT leaves the recording intact;
+  - the full 3-hour run with the Historian writer and API attached is equivalent to the baseline
+    (same event log, same final TEP states, the exact same UNS publish calls);
+  - the launcher with `--historian` starts, and stops cleanly with a committed recording.
+  - `run.py` stopped while the simulation runs commits the recording.
+- **Docs:** `docs/LOCAL_MANUFACTURING_STACK.md` and `docs/HISTORIAN.md`.
+
+### Fixed
+
+- **`run.py` now stops gracefully on Ctrl-Break (Windows) and SIGTERM,** so its cleanup runs: the UNS
+  publisher publishes `offline` and the Historian writer commits.
+  - **Before:** uvicorn shut down, then re-raised the signal with the default handler. The process was
+    terminated with exit code 3 before its cleanup. The stack launcher uses Ctrl-Break, so this is how
+    it stops the simulator.
+  - **Effect before the fix:** the UNS relied on its MQTT last will, and up to 60 simulated seconds of
+    Historian data could be lost.
+
+## [Unreleased]: read-only Historian HTTP API
+
+**No simulator, UNS, schema or run.py change.**
+
+### Added
+
+- **`historian/api.py`:** a read-only HTTP API (FastAPI, GET only) over `HistorianReader`, with
+  `/status`, `/scopes`, `/entities`, `/series`, `/samples`, `/value_at`, `/events`, `/states` and
+  `/state_at`.
+  - The access policy is fixed at start-up: `current` (default) or `evaluator`. Requests cannot
+    widen it.
+  - Cursors are opaque and bound to their query.
+  - Errors are stable JSON (`{"error": {"code", "message"}}`) and contain no paths or SQL.
+- **`scripts/run_historian_api.py`:** `--database`, `--host` (default 127.0.0.1), `--port` (default
+  8060) and `--access current|evaluator`.
+- **`tests/test_historian_api.py`:** 26 tests. Expected values come from `HistorianReader` itself.
+- **`docs/HISTORIAN_QUERY_API.md`.**
+
+### Changed
+
+- **Reader continuation:** `samples`, `events` and `state_changes` accept `after`, the key of the last
+  row of the previous page, and return `next_after`. This is keyset continuation in the history order.
+- **Typed reader errors:** `HistorianNotFoundError` (a `KeyError`, with a kind: scope, entity or
+  series) and `HistorianQueryError` (a `ValueError`, with a code).
+- **Entity lookup:** a new `entity()` method; `series()`, `events()`, `state_changes()` and
+  `state_at()` report an unknown entity.
+
+## [Unreleased]: deterministic Historian
+
+**No simulator, UNS or API change.** The UNS stays byte-identical to its golden recording with the
+Historian attached. The Historian is a peer of the UNS: it records the operational projection over
+simulation time into SQLite, without MQTT.
+
+### Added
+
+- **`historian/`**:
+  - `schema.sql`: schema `acme-historian/1`;
+  - `writer.py`: `HistorianStore` and `HistorianWriter`, an observer of `SimulatorService`;
+  - `reader.py`: `HistorianReader`.
+- **What is recorded:**
+  - step-state measurements on a 1-second grid by default;
+  - analyzers on their catalog schedule (t = k·P + 1, with dead time), equal results included;
+  - property-level state changes, by the projection's report-by-exception rule;
+  - OE-/LC- events;
+  - the lifecycle;
+  - coverage intervals.
+- **Recording behaviour:**
+  - idempotent re-ingestion, with `HistorianIntegrityError` on conflicting data;
+  - batched commits (every 60 simulated seconds and at every lifecycle change, reset and close);
+  - no backfill on attach, and explicit coverage gaps.
+- **Reader:**
+  - one scope per query, with `current` (agent) and `evaluator` access;
+  - half-open ranges, span and row limits;
+  - `value_at` returning age, semantics, dead time and coverage continuity, and `state_at`.
+- **`scripts/record_history.py`:** headless recording into a session file.
+- **`tests/test_historian.py`:** 30 tests, including:
+  - boundary, wall-clock and MQTT independence;
+  - determinism;
+  - agreement with the UNS at shared times;
+  - the full 3-hour demo with the Historian and UNS attached.
+- **Docs:** `docs/HISTORIAN.md` and `docs/HISTORIAN_DATA_MODEL.md`.
+- **`tests/uns_harness.py`:** `attach_recording_publisher()` and `record(extra=...)`, so another
+  observer can be attached during the golden scenario. The golden itself is unchanged.
+
+## [Unreleased]: operational projection extracted (Historian step 1)
+
+**No behaviour change.** The UNS publishes byte for byte what it published before, which is proven
+against a recording made before the change.
+
+### Changed
+
+- **`projection/operational.py` (new):** `OperationalProjection`, the transport-neutral operational
+  context projection shared by the UNS and the future Historian. It moves out of `uns/publisher.py`
+  and `uns/namespace.py` unchanged:
+  - operational filtering (through `api/operational.py` and context-model observability);
+  - ISA-95 placement (`Isa95Placement`);
+  - entity metadata, measurements, entity state and records;
+  - operational events and lifecycle;
+  - the report-by-exception rule for state (`StateChangeFilter`).
+
+  It adds `measurement_semantics()` (`step_state` or `analyzer_sample`, from the TEP catalog). It has
+  no MQTT dependency and no wall-clock time.
+- **`uns/publisher.py` and `uns/namespace.py`** keep only the MQTT transport: topics and escaping,
+  envelope, retain, QoS, reconnect, retained-state adoption and hygiene, and the sampling period.
+  Their public names are unchanged.
+
+### Added
+
+- **`tests/test_projection.py` (16 tests):** the projection contract (canonical ids and ISA-95
+  placement, measurements and semantics, state, records, events, lifecycle, scope, no evaluator-only
+  content, no wall-clock time, determinism, the change rule), plus a byte-exact UNS regression.
+- **`tests/uns_harness.py` and `tests/golden/uns_stream.json`:** the harness records every MQTT
+  publish call of a scripted SCN-COOL-001 scenario (93,627 messages, two scopes) without a broker.
+  The golden digest was recorded before the extraction.
+- **`docs/CONTEXT_PROJECTION_PRINCIPLES.md` P10:** one shared operational projection.
+
 ## [Unreleased]: integrated local manufacturing stack
 
 **No simulator physics, scenario, UNS payload or event change.** The simulator web UI, the UNS publisher
