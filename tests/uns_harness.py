@@ -57,27 +57,36 @@ class RecordingClient:
         pass
 
 
-def record(steps=None):
-    """Run the scripted scenario and return the list of (topic, payload, qos, retain) calls."""
+def attach_recording_publisher(svc):
+    """A real UNSPublisher on ``svc`` whose MQTT client records instead of sending: (publisher, client)."""
+    import uns.publisher as up
+    from uns.namespace import Namespace
+    pub = up.UNSPublisher(svc)
+    client = RecordingClient(pub)
+    pub._client = client
+    pub._status_topic = Namespace(svc.engine, pub.cm, pub.root).publisher_status_topic()
+    pub._connected.set()
+    pub._resync = True                               # as after a real CONNACK
+    svc.add_observer(pub.sync)
+    pub.sync()
+    return pub, client
+
+
+def record(steps=None, extra=None):
+    """Run the scripted scenario and return the list of (topic, payload, qos, retain) calls.
+    ``extra(svc)`` may attach another observer (it must have ``close()``), e.g. a Historian writer."""
     sys.path.insert(0, str(ROOT))
     import uns.publisher as up
     from api.service import SimulatorService
     from simulator.tep import control_scheme as cs
-    from uns.namespace import Namespace
 
     real_wall_clock = up.wall_clock
     up.wall_clock = lambda: FIXED_OBSERVED_AT          # restored below: other tests need the real clock
     svc = SimulatorService(start_runner=False)
     try:
         svc.create_simulation("SCN-COOL-001")
-        pub = up.UNSPublisher(svc)
-        client = RecordingClient(pub)
-        pub._client = client
-        pub._status_topic = Namespace(svc.engine, pub.cm, pub.root).publisher_status_topic()
-        pub._connected.set()
-        pub._resync = True                               # as after a real CONNACK
-        svc.add_observer(pub.sync)
-        pub.sync()
+        pub, client = attach_recording_publisher(svc)
+        other = extra(svc) if extra else None
         lc_sep = next(l for l, d in cs.LOOPS.items() if d.tag == "LC-SEP")
         script = steps or [
             ("run_until", 1000), ("operator", ("set_setpoint", {"loop_id": lc_sep, "value": 52.0})),
@@ -93,6 +102,8 @@ def record(steps=None):
             else:
                 getattr(svc, f"{op}_simulation")()
         pub.close()
+        if other is not None:
+            other.close()
         return client.calls
     finally:
         up.wall_clock = real_wall_clock

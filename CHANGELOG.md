@@ -4,6 +4,43 @@ Notable changes to this repository. The simulator version is `simulator.__versio
 contract version is `contract.version` in `contract/canonical_contract.yaml`
 (see [contract §23](docs/CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)).
 
+## [Unreleased]: deterministic Historian
+
+**No simulator, UNS or API change.** The UNS stays byte-identical to its golden recording with the
+Historian attached. The Historian is a peer of the UNS: it records the operational projection over
+simulation time into SQLite, without MQTT.
+
+### Added
+
+- **`historian/`**:
+  - `schema.sql`: schema `acme-historian/1`;
+  - `writer.py`: `HistorianStore` and `HistorianWriter`, an observer of `SimulatorService`;
+  - `reader.py`: `HistorianReader`.
+- **What is recorded:**
+  - step-state measurements on a 1-second grid by default;
+  - analyzers on their catalog schedule (t = k·P + 1, with dead time), equal results included;
+  - property-level state changes, by the projection's report-by-exception rule;
+  - OE-/LC- events;
+  - the lifecycle;
+  - coverage intervals.
+- **Recording behaviour:**
+  - idempotent re-ingestion, with `HistorianIntegrityError` on conflicting data;
+  - batched commits (every 60 simulated seconds and at every lifecycle change, reset and close);
+  - no backfill on attach, and explicit coverage gaps.
+- **Reader:**
+  - one scope per query, with `current` (agent) and `evaluator` access;
+  - half-open ranges, span and row limits;
+  - `value_at` returning age, semantics, dead time and coverage continuity, and `state_at`.
+- **`scripts/record_history.py`:** headless recording into a session file.
+- **`tests/test_historian.py`:** 30 tests, including:
+  - boundary, wall-clock and MQTT independence;
+  - determinism;
+  - agreement with the UNS at shared times;
+  - the full 3-hour demo with the Historian and UNS attached.
+- **Docs:** `docs/HISTORIAN.md` and `docs/HISTORIAN_DATA_MODEL.md`.
+- **`tests/uns_harness.py`:** `attach_recording_publisher()` and `record(extra=...)`, so another
+  observer can be attached during the golden scenario. The golden itself is unchanged.
+
 ## [Unreleased]: operational projection extracted (Historian step 1)
 
 **No behaviour change.** The UNS publishes byte for byte what it published before, which is proven

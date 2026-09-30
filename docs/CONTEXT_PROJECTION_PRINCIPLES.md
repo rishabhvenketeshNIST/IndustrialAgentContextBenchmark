@@ -1,8 +1,9 @@
 # Context projection principles
 
 Rules that UNS, historian and knowledge-graph implementations must follow. **The UNS is implemented**
-as an ISA-95-based MQTT namespace ([UNS.md](UNS.md)) on the shared operational projection (P10); the
-historian and knowledge graph do not exist yet. This page constrains them in advance.
+as an ISA-95-based MQTT namespace ([UNS.md](UNS.md)), and **the Historian** as deterministic SQLite
+history ([HISTORIAN.md](HISTORIAN.md)), both on the shared operational projection (P10). The knowledge
+graph does not exist yet. This page constrains them in advance.
 
 ```
 Enterprise Simulator (source of truth)
@@ -101,7 +102,7 @@ scored against.
 ## P10. One shared operational projection
 
 `projection/operational.py` (`OperationalProjection`) is the transport-neutral operational projection
-shared by the context consumers: the UNS today, the Historian next. For one simulation engine (one
+shared by the context consumers, the UNS and the Historian. For one simulation engine (one
 operational scope) it decides *what* is operationally observable and how it is structured:
 
 - entity metadata and ISA-95 placement (`Isa95Placement`, derived from the simulator hierarchy and the
@@ -115,7 +116,7 @@ It enforces P4 through `api/operational.py` and the context model's observabilit
 field names. It contains no wall-clock time (P6).
 
 Each consumer adds only its own concerns: the UNS adds MQTT topics, envelope, retain, QoS and reconnect,
-and the Historian will add storage and queries. A consumer must not re-derive projection semantics.
+and the Historian adds storage, coverage and bounded queries. A consumer must not re-derive projection semantics.
 `tests/test_projection.py` fixes the projection's contract, and proves that the UNS built on it
 publishes byte for byte what it published before the projection was extracted.
 
