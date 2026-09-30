@@ -1,0 +1,16 @@
+{
+  "_comment": "Exact UNS publication of the scripted SCN-COOL-001 scenario in tests/uns_harness.py, recorded from the UNS publisher before the operational projection was extracted (commit 3810ce1, Fortran TEP backend). Regenerate only for an intended UNS change: python -m tests.uns_harness",
+  "sha256": "7acb322dbd4caffa3bbaa513c944fce9ffade7d99e3b95c2e4eb0479dd1c6b70",
+  "messages": 93627,
+  "topics": 474,
+  "kinds": {
+    "delete": 13,
+    "event": 57,
+    "lifecycle": 8,
+    "measurement": 89428,
+    "meta": 202,
+    "publisher": 2,
+    "state": 3917
+  },
+  "scopes": 2
+}

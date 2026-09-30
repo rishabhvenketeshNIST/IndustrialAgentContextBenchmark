@@ -1,8 +1,8 @@
 # Context projection principles
 
 Rules that UNS, historian and knowledge-graph implementations must follow. **The UNS is implemented**
-as an ISA-95-based MQTT namespace ([UNS.md](UNS.md)); the historian and knowledge graph do not exist
-yet. This page constrains them in advance.
+as an ISA-95-based MQTT namespace ([UNS.md](UNS.md)) on the shared operational projection (P10); the
+historian and knowledge graph do not exist yet. This page constrains them in advance.
 
 ```
 Enterprise Simulator (source of truth)
@@ -97,6 +97,27 @@ against simulator truth.
 The evaluator reads ground truth from `/api/benchmark/*`, including the `EV-` ↔ `OE-` mapping for
 scoring references made to operational events. A projection is what the agent sees, never what it is
 scored against.
+
+## P10. One shared operational projection
+
+`projection/operational.py` (`OperationalProjection`) is the transport-neutral operational projection
+shared by the context consumers: the UNS today, the Historian next. For one simulation engine (one
+operational scope) it decides *what* is operationally observable and how it is structured:
+
+- entity metadata and ISA-95 placement (`Isa95Placement`, derived from the simulator hierarchy and the
+  context model);
+- measurements, with their timestamp semantics (`step_state` or `analyzer_sample`);
+- entity state and operational records;
+- operational events and the lifecycle;
+- the report-by-exception rule for state (`StateChangeFilter`).
+
+It enforces P4 through `api/operational.py` and the context model's observability; it keeps no list of
+field names. It contains no wall-clock time (P6).
+
+Each consumer adds only its own concerns: the UNS adds MQTT topics, envelope, retain, QoS and reconnect,
+and the Historian will add storage and queries. A consumer must not re-derive projection semantics.
+`tests/test_projection.py` fixes the projection's contract, and proves that the UNS built on it
+publishes byte for byte what it published before the projection was extracted.
 
 ## P9. Changes
 

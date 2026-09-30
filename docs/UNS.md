@@ -16,8 +16,10 @@ available to any MQTT client, and MQTT is its transport.
 
 The code is in [uns/](../uns/):
 
-- [namespace.py](../uns/namespace.py): the topic tree;
-- [publisher.py](../uns/publisher.py): simulator to MQTT;
+- [projection/operational.py](../projection/operational.py): the shared, transport-neutral operational
+  projection that decides what is published ([P10](CONTEXT_PROJECTION_PRINCIPLES.md#p10-one-shared-operational-projection));
+- [namespace.py](../uns/namespace.py): the topic tree over the projection's ISA-95 placement;
+- [publisher.py](../uns/publisher.py): projection to MQTT;
 - [broker.py](../uns/broker.py) and [mosquitto.conf](../uns/mosquitto.conf): the local broker;
 - [scripts/run_uns.py](../scripts/run_uns.py): the runner;
 - [inspector.py](../uns/inspector.py), [ui/inspector/](../ui/inspector/) and

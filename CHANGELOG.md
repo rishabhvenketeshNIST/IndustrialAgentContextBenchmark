@@ -4,6 +4,38 @@ Notable changes to this repository. The simulator version is `simulator.__versio
 contract version is `contract.version` in `contract/canonical_contract.yaml`
 (see [contract §23](docs/CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)).
 
+## [Unreleased]: operational projection extracted (Historian step 1)
+
+**No behaviour change.** The UNS publishes byte for byte what it published before, which is proven
+against a recording made before the change.
+
+### Changed
+
+- **`projection/operational.py` (new):** `OperationalProjection`, the transport-neutral operational
+  context projection shared by the UNS and the future Historian. It moves out of `uns/publisher.py`
+  and `uns/namespace.py` unchanged:
+  - operational filtering (through `api/operational.py` and context-model observability);
+  - ISA-95 placement (`Isa95Placement`);
+  - entity metadata, measurements, entity state and records;
+  - operational events and lifecycle;
+  - the report-by-exception rule for state (`StateChangeFilter`).
+
+  It adds `measurement_semantics()` (`step_state` or `analyzer_sample`, from the TEP catalog). It has
+  no MQTT dependency and no wall-clock time.
+- **`uns/publisher.py` and `uns/namespace.py`** keep only the MQTT transport: topics and escaping,
+  envelope, retain, QoS, reconnect, retained-state adoption and hygiene, and the sampling period.
+  Their public names are unchanged.
+
+### Added
+
+- **`tests/test_projection.py` (16 tests):** the projection contract (canonical ids and ISA-95
+  placement, measurements and semantics, state, records, events, lifecycle, scope, no evaluator-only
+  content, no wall-clock time, determinism, the change rule), plus a byte-exact UNS regression.
+- **`tests/uns_harness.py` and `tests/golden/uns_stream.json`:** the harness records every MQTT
+  publish call of a scripted SCN-COOL-001 scenario (93,627 messages, two scopes) without a broker.
+  The golden digest was recorded before the extraction.
+- **`docs/CONTEXT_PROJECTION_PRINCIPLES.md` P10:** one shared operational projection.
+
 ## [Unreleased]: integrated local manufacturing stack
 
 **No simulator physics, scenario, UNS payload or event change.** The simulator web UI, the UNS publisher
