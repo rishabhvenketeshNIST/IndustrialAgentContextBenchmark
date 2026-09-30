@@ -472,16 +472,14 @@ class OperationalProjection:
 
     def event_count(self) -> int:
         """Number of operational events so far in this scope."""
-        self._events.update()
-        return len(self._events._records)
+        return len(self._events.records())
 
     def events_since(self, n: int) -> List[dict]:
         """Operational events after the first ``n`` of the scope, in stream order. Each has entity_id,
         event_id (OE-/LC-), event_type, source, severity, payload, causation_id, correlation_id and the
         simulation time (and timestamp) at which it happened."""
-        self._events.update()
         out = []
-        for r in self._events._records[n:]:
+        for r in self._events.records(n):
             out.append({"entity_id": self.event_entity(r["target"]), "event_id": r["event_id"],
                         "event_type": r["type"], "source": r["source"], "severity": r["severity"],
                         "payload": r["payload"], "causation_id": r["causation_id"],
