@@ -23,3 +23,22 @@ class HistorianIntegrityError(HistorianError):
 
 class HistorianSchemaError(HistorianError):
     """The database has no, or an incompatible, Historian schema version."""
+
+
+class HistorianNotFoundError(HistorianError, KeyError):
+    """A scope, entity or series that is not recorded. ``kind`` is 'scope', 'entity' or 'series'."""
+
+    def __init__(self, kind: str, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+
+    def __str__(self) -> str:
+        return self.args[0]
+
+
+class HistorianQueryError(HistorianError, ValueError):
+    """A query the reader refuses. ``code``: missing_scope, invalid_range, span_exceeded, invalid_limit."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code

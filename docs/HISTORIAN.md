@@ -41,8 +41,8 @@ OperationalProjection   OperationalProjection      projection/operational.py (on
 - **The UNS and the Historian keep their own cursors and change filters.** Neither changes what the
   other records. The UNS still publishes byte for byte what it published before; this is tested.
 
-The **reader** is Python-only for now. An HTTP query API and a UI will follow once the storage and
-query contract is stable.
+The **reader** is the query implementation. A read-only HTTP API serves it (below); a UI and the
+integration into the local manufacturing stack will follow.
 
 ## Quick start
 
@@ -70,6 +70,22 @@ The file is ordinary SQLite: `sqlite3 exports/SCN-COOL-001.sqlite ".tables"`.
 
 In code, attach a writer to any `SimulatorService` with
 `HistorianWriter(service, path).attach()` and close it with `.close()`.
+
+## HTTP query API
+
+```bash
+python scripts/run_historian_api.py --database exports/SCN-COOL-001.sqlite     # http://127.0.0.1:8060/status
+```
+
+A read-only, localhost service over one file. It provides `/status`, `/scopes`, `/entities`,
+`/series`, `/samples`, `/value_at`, `/events`, `/states` and `/state_at`.
+
+- Every query semantic is `HistorianReader`'s: scopes, access, half-open ranges, limits, and keyset
+  pagination through `next_cursor`.
+- It serves the current scope only, unless it is started with `--access evaluator`, which is for the
+  benchmark evaluator only.
+
+See [HISTORIAN_QUERY_API.md](HISTORIAN_QUERY_API.md).
 
 ## Scopes
 
@@ -120,6 +136,6 @@ A simulated second costs about 3–4 ms with the Historian attached, including t
 file ([HISTORIAN_DATA_MODEL.md](HISTORIAN_DATA_MODEL.md#size)).
 
 Source:
-- `historian/writer.py`, `historian/reader.py`, `historian/schema.sql`
-- `scripts/record_history.py`
-- `tests/test_historian.py`
+- `historian/writer.py`, `historian/reader.py`, `historian/schema.sql`, `historian/api.py`
+- `scripts/record_history.py`, `scripts/run_historian_api.py`
+- `tests/test_historian.py`, `tests/test_historian_api.py`

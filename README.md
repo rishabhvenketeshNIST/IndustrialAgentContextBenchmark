@@ -108,7 +108,7 @@ MQTT, no TLS, services on 127.0.0.1.
 * **[Canonical simulator contract](docs/CANONICAL_SIMULATOR_CONTRACT.md)**: exact semantics of everything the simulator produces
 * **[Canonical context model](docs/CONTEXT_MODEL.md)**: identity, observations, state, events and relationships for future UNS / historian / KG projections, with the [ISA-95 mapping](docs/ISA95_SIMULATOR_MAPPING.md)
 * **[Unified Namespace (UNS)](docs/UNS.md)**: the ISA-95-based manufacturing information space implemented over MQTT (`python scripts/run_uns.py --start-broker`), with a read-only [visual inspector](docs/UNS.md#visual-inspection) (`python scripts/run_inspector.py`, http://127.0.0.1:8050); all together: [local manufacturing stack](docs/LOCAL_MANUFACTURING_STACK.md)
-* **[Historian](docs/HISTORIAN.md)**: deterministic historical operational context in SQLite, a peer of the UNS (`python scripts/record_history.py --db exports/SCN-COOL-001.sqlite`)
+* **[Historian](docs/HISTORIAN.md)**: deterministic historical operational context in SQLite, a peer of the UNS (`python scripts/record_history.py --db exports/SCN-COOL-001.sqlite`), with a read-only [query API](docs/HISTORIAN_QUERY_API.md) (`python scripts/run_historian_api.py --database exports/SCN-COOL-001.sqlite`, http://127.0.0.1:8060)
 * [Learning guide](docs/LEARNING_GUIDE.md): 17 levels, from "what is this" to extending it
 * [Worked demo, step by step](docs/06_scenarios/scenario_examples/SCN-COOL-001.md)
 * [The TEP boundary contract](docs/04_coupling/coupling_contract.md)

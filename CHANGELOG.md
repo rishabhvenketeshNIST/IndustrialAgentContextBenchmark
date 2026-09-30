@@ -4,6 +4,33 @@ Notable changes to this repository. The simulator version is `simulator.__versio
 contract version is `contract.version` in `contract/canonical_contract.yaml`
 (see [contract §23](docs/CANONICAL_SIMULATOR_CONTRACT.md#23-versioning)).
 
+## [Unreleased]: read-only Historian HTTP API
+
+**No simulator, UNS, schema or run.py change.**
+
+### Added
+
+- **`historian/api.py`:** a read-only HTTP API (FastAPI, GET only) over `HistorianReader`, with
+  `/status`, `/scopes`, `/entities`, `/series`, `/samples`, `/value_at`, `/events`, `/states` and
+  `/state_at`.
+  - The access policy is fixed at start-up: `current` (default) or `evaluator`. Requests cannot
+    widen it.
+  - Cursors are opaque and bound to their query.
+  - Errors are stable JSON (`{"error": {"code", "message"}}`) and contain no paths or SQL.
+- **`scripts/run_historian_api.py`:** `--database`, `--host` (default 127.0.0.1), `--port` (default
+  8060) and `--access current|evaluator`.
+- **`tests/test_historian_api.py`:** 26 tests. Expected values come from `HistorianReader` itself.
+- **`docs/HISTORIAN_QUERY_API.md`.**
+
+### Changed
+
+- **Reader continuation:** `samples`, `events` and `state_changes` accept `after`, the key of the last
+  row of the previous page, and return `next_after`. This is keyset continuation in the history order.
+- **Typed reader errors:** `HistorianNotFoundError` (a `KeyError`, with a kind: scope, entity or
+  series) and `HistorianQueryError` (a `ValueError`, with a code).
+- **Entity lookup:** a new `entity()` method; `series()`, `events()`, `state_changes()` and
+  `state_at()` report an unknown entity.
+
 ## [Unreleased]: deterministic Historian
 
 **No simulator, UNS or API change.** The UNS stays byte-identical to its golden recording with the
